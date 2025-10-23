@@ -96,7 +96,6 @@ controller_interface::CallbackReturn SaganDriverController::on_configure(
     return CallbackReturn::FAILURE;
   }
 
-  
   if (command_interface_types_.empty())
   {
     command_interface_types_ = get_node()->get_parameter("command_interfaces").as_string_array();
@@ -108,8 +107,6 @@ controller_interface::CallbackReturn SaganDriverController::on_configure(
     return CallbackReturn::FAILURE;
   }
   
-  
-
   for (const auto &interface : command_interface_types_)
   {
     auto it =
@@ -155,30 +152,28 @@ controller_interface::CallbackReturn SaganDriverController::on_configure(
     get_interface_list(command_interface_types_).c_str(),
     get_interface_list(state_interface_types_).c_str()
   );
-
   
   joints_reference_subscriber_ = get_node()->create_subscription<sagan_interfaces::msg::SaganCmd>(
     "/SaganCommands", rclcpp::SystemDefaultsQoS(),
     [this](const std::shared_ptr<sagan_interfaces::msg::SaganCmd> msg) -> void
     {
-        std::lock_guard<std::mutex> lock(this->mutex_actuator);
-        for (int index = 0; index < 4; index++)
-        {
-          wheel_velocity_reference_[index] = msg->wheel_cmd[index].angular_velocity;
-          steering_position_reference_[index] = msg->steering_cmd[index].angular_position;            
-        }
-  });
+      std::lock_guard<std::mutex> lock(this->mutex_actuator);
+      for (int index = 0; index < 4; index++)
+      {
+        wheel_velocity_reference_[index] = msg->wheel_cmd[index].angular_velocity;
+        steering_position_reference_[index] = msg->steering_cmd[index].angular_position;            
+      }
+    }
+  );
 
   joints_state_publisher_ = get_node()->create_publisher<sagan_interfaces::msg::SaganStates>("Sagan/SaganStates", 10);
 
   return CallbackReturn::SUCCESS;
-
 }
 
 controller_interface::InterfaceConfiguration
 SaganDriverController::command_interface_configuration() const
 {
-
   controller_interface::InterfaceConfiguration command_interfaces_config;
   command_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   command_interfaces_config.names.reserve(8 * wheel_command_interface_types_.size());

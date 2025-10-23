@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sagan_control_hardware_interface</name>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="lucasmeneghetti02@hotmail.com">mene</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>hardware_interface</depend>
+  <depend>controller_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>sagan_interfaces</depend>
+  <depend>std_msgs</depend>
+
+  <!-- This provides the libi2c-dev dependency -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <build_depend>libi2c-dev</build_depend>
+  <exec_depend>libi2c-dev</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <!-- Export the plugin -->
+    <hardware_interface plugin="${prefix}/sagan_hardware.xml" />
+  </export>
+</package>

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<library path="sagan_control_hardware_interface">
+  <class name="sagan_control_hardware_interface/SaganControlHardwareInterface"
+         type="sagan_control_hardware_interface::SaganControlHardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Sagan Drive Controller for ROS2-based systems.
+    </description>
+  </class>
+</library>

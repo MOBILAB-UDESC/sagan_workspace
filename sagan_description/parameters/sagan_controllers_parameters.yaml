@@ -2,6 +2,9 @@ controller_manager:
   ros__parameters:
     update_rate: 200
 
+    sagan_control_hardware_interface:
+     type: sagan_control_hardware_interface/SaganControlHardwareInterface
+    
     sagan_drive_controller:
      type: sagan_drive_controller/SaganDriverController
     
@@ -35,7 +38,7 @@ sagan_drive_controller:
       - velocity
     
     steering_command_interfaces:
-      - velocity
+      - position
 
     #ATENÇÃO mudar a ordem das interfaces de estado explode tudo : position, velocity e effort
     #MEME, pode mudar sim

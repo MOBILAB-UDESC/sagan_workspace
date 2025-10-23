@@ -11,7 +11,7 @@ void configure_sensor(
     std::vector<bool>& measurement_map, 
     Eigen::MatrixXd& R_matrix)
 {
-    // Declare parameters for the sensor
+    // Declare parameters for the sensor $$
     node->declare_parameter<std::vector<bool>>(sensor_name + ".measurement_map", std::vector<bool>(STATE_SIZE, false));
     node->declare_parameter<std::vector<double>>(sensor_name + ".R_diag", {});
 
