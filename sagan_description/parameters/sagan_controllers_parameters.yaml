@@ -1,12 +1,12 @@
 controller_manager:
   ros__parameters:
-    update_rate: 200
+    update_rate: 100
 
     sagan_control_hardware_interface:
      type: sagan_control_hardware_interface/SaganControlHardwareInterface
     
-    sagan_drive_controller:
-     type: sagan_drive_controller/SaganDriverController
+    # sagan_drive_controller:
+    #  type: sagan_drive_controller/SaganDriverController
     
     joint_state_broadcaster:
      type: joint_state_broadcaster/JointStateBroadcaster

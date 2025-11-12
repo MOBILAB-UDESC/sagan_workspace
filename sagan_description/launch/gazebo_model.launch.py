@@ -99,6 +99,13 @@ def generate_launch_description():
         condition=UnlessCondition(use_sim_time) # Only run this if *not* in simulation
     )
 
+    nodeSaganImuDriver = Node(
+        package='sagan_mpu9250_driver',
+        executable='sagan_mpu9250_driver',
+        output='screen',
+        parameters=[{"use_sim_time": use_sim_time}],
+        condition=UnlessCondition(use_sim_time) # Only run this if *not* in simulation
+    )
     # --- Common Nodes (Sim & Real) ---
     
     nodeRobotStatePublisher = Node(
@@ -151,17 +158,18 @@ def generate_launch_description():
     launchDescriptionObject.add_action(use_sim_time_arg)
     
     # 2. Add Simulation-Only nodes
-    launchDescriptionObject.add_action(gazeboLaunch)
-    launchDescriptionObject.add_action(spawnModelNodeGazebo)
-    launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
+    #launchDescriptionObject.add_action(gazeboLaunch)
+    #launchDescriptionObject.add_action(spawnModelNodeGazebo)
+    #launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
 
     # 3. Add Real-Robot-Only node
     launchDescriptionObject.add_action(control_node)
+    launchDescriptionObject.add_action(nodeSaganImuDriver)  
 
     # 4. Add Common nodes
     launchDescriptionObject.add_action(nodeRobotStatePublisher)
     launchDescriptionObject.add_action(joint_state_broadcaster_spawner)
-    launchDescriptionObject.add_action(diff_drive_base_controller_spawner)
+    #launchDescriptionObject.add_action(diff_drive_base_controller_spawner)
     launchDescriptionObject.add_action(nodeSaganOdometry)
     launchDescriptionObject.add_action(nodeSaganEKF)
     launchDescriptionObject.add_action(nodeSaganDiffDriver)

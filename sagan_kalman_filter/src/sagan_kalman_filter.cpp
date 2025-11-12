@@ -86,7 +86,7 @@ SaganKalmanFilter::SaganKalmanFilter()
 
     // --- ROS 2 Communications ---
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-        "/odom/with_noise", 10, std::bind(&SaganKalmanFilter::odom_callback, this, std::placeholders::_1));
+        "/odom", 10, std::bind(&SaganKalmanFilter::odom_callback, this, std::placeholders::_1));
     
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
         "/imu", 10, std::bind(&SaganKalmanFilter::imu_callback, this, std::placeholders::_1));

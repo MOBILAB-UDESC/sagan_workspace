@@ -35,4 +35,4 @@ sagan_kalman_filter:
       # Measurement noise covariance (R) for the enabled states above.
       # Order: [R_ax, R_ay, R_omega]
       #R_diag: [498.8809, 297.382, 23.0799, 179.971]
-      R_diag: [4.3951, 175.8178, 11.3659, 1000.0]
+      R_diag: [4.3951, 175.8178, 500.3659, 10.0]

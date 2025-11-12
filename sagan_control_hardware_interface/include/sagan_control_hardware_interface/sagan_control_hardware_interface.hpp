@@ -1,46 +1,51 @@
-#ifndef SAGAN_CONTROL_HARDWARE_INTERFACE_HPP_
-#define SAGAN_CONTROL_HARDWARE_INTERFACE_HPP_
+#ifndef SAGAN_CONTROL_HARDWARE_INTERFACE__SAGAN_CONTROL_HARDWARE_INTERFACE_HPP_
+#define SAGAN_CONTROL_HARDWARE_INTERFACE__SAGAN_CONTROL_HARDWARE_INTERFACE_HPP_
 
-#include <memory>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "hardware_interface/handle.hpp"
 #include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/system_interface.hpp"
-#include "hardware_interface/types/hardware_interface_return_values.hpp"
-#include "rclcpp/clock.hpp"
-#include "rclcpp/duration.hpp"
+#include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "rclcpp/rclcpp.hpp"
 #include "rclcpp/macros.hpp"
-#include "rclcpp/time.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 
-namespace sagan_control_hardware_interface
-{
+// Include your custom messages
+#include "sagan_interfaces/msg/sagan_cmd.hpp"
+#include "sagan_interfaces/msg/sagan_states.hpp"
 
-// --- Define the I2C protocol structs (must match Pico firmware) ---
+// --- Linux I2C Libraries ---
+#include <fcntl.h>       // For open()
+#include <sys/ioctl.h>   // For ioctl()
+#include <linux/i2c-dev.h> // For I2C_SLAVE
+extern "C" {
+  #include <i2c/smbus.h> // For i2c_smbus_... functions
+}
+#include <unistd.h>      // For close()
+
 #pragma pack(push, 1)
-// Master -> Slave
-struct ControlData {
-    uint8_t cmd;         // Command (e.g., 0xA1)
-    int16_t front_velocity;   // Target velocity * 100
-    int16_t rear_velocity;    // Target velocity * 100
+// Match Pico structure (NO command byte)
+struct SensorData {
+    int16_t front_velocity;     // Actual velocity of motor 1
+    int16_t front_current;      // Current draw of motor 1
+    int16_t rear_velocity;      // Actual velocity of motor 2  
+    int16_t rear_current;       // Current draw of motor 2
 };
 
-// Slave -> Master
-struct SensorData {
-    int16_t front_velocity;     // Actual velocity * 100
-    int16_t front_current;      // Current in mA
-    int16_t rear_velocity;     // Actual velocity * 100
-    int16_t rear_current;      // Current in mA
+// Control data to send to Pico (WITH command byte)
+struct ControlData {
+    uint8_t cmd;               // Command (0xA1)
+    int16_t front_velocity;    // Target velocity for motor 1
+    int16_t rear_velocity;     // Target velocity for motor 2
 };
 #pragma pack(pop)
 
-// --- Conversion factor (must match Pico firmware) ---
-const float DATA_SCALE_FACTOR = 100.0f;
-const float CURRENT_SCALE_FACTOR = 1000.0f; // From mA to A
-
+namespace sagan_control_hardware_interface
+{
 class SaganControlHardwareInterface : public hardware_interface::SystemInterface
 {
 public:
@@ -72,26 +77,63 @@ public:
     const rclcpp_lifecycle::State & previous_state) override;
 
 private:
-  int i2c_left_handle_ = -1;
-  int i2c_right_handle_ = -1;
+  // ROS2 Node for topic communication
+  std::shared_ptr<rclcpp::Node> node_;
   
-  // Parameters from URDF
+  // Subscriber and Publisher
+  rclcpp::Subscription<sagan_interfaces::msg::SaganCmd>::SharedPtr commands_subscriber_;
+  rclcpp::Publisher<sagan_interfaces::msg::SaganStates>::SharedPtr states_publisher_;
+  
+  // Message storage
+  sagan_interfaces::msg::SaganStates states_msg_;
+  sagan_interfaces::msg::SaganCmd latest_commands_;
+  
+  // Mutex for thread safety
+  std::mutex commands_mutex_;
+  std::mutex states_mutex_;
+  
+  // Command storage from topic
+  std::vector<double> wheel_velocity_commands_;
+  std::vector<double> steering_position_commands_;
+  
+  // Flag to indicate new commands received
+  bool new_commands_available_;
+
+  // Parameters
   std::string i2c_bus_path_;
-  int left_pico_addr_ = 0;
-  int right_pico_addr_ = 0;
+  int left_pico_addr_;
+  int right_pico_addr_;
 
-  // Store for joint and sensor names
-  std::string front_left_joint_name_, rear_left_joint_name_, front_right_joint_name_, rear_right_joint_name_;
-  std::string front_left_sensor_name_, rear_left_sensor_name_, front_right_sensor_name_, rear_right_sensor_name_;
+  // I2C file descriptors
+  int i2c_left_handle_{-1};
+  int i2c_right_handle_{-1};
 
-  // Store for ros2_control interfaces
+  // Storage for hardware interfaces
   std::vector<double> hw_commands_velocities_;
-  std::vector<double> hw_states_positions_; // We will integrate velocity to get position
+  std::vector<double> hw_states_positions_;
   std::vector<double> hw_states_velocities_;
   std::vector<double> hw_states_currents_;
+
+  // Joint names
+  std::string LF_wheel_joint;
+  std::string LR_wheel_joint;
+  std::string RF_wheel_joint;
+  std::string RR_wheel_joint;
+
+  // Sensor names
+  std::string front_left_sensor_name_;
+  std::string rear_left_sensor_name_;
+  std::string front_right_sensor_name_;
+  std::string rear_right_sensor_name_;
+
+  // Constants - Match Pico scale factors
+  static constexpr double DATA_SCALE_FACTOR = 100.0;     // Match Pico's DATA_SCALE_FACTOR
+  static constexpr double CURRENT_SCALE_FACTOR = 1000.0; // Pico sends current * 1000
+
+  // Callback for commands topic
+  void commands_callback(const sagan_interfaces::msg::SaganCmd::SharedPtr msg);
 };
 
 }  // namespace sagan_control_hardware_interface
 
-#endif  // SAGAN_CONTROL_HARDWARE_INTERFACE
-
+#endif  // SAGAN_CONTROL_HARDWARE_INTERFACE__SAGAN_CONTROL_HARDWARE_INTERFACE_HPP_

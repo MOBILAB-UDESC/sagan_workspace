@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
 
-    <ros2_control name="GazeboSimSystem" type="system">
+    <!-- <ros2_control name="GazeboSimSystem" type="system">
         <hardware>
             <plugin>gz_ros2_control/GazeboSimSystem</plugin>
         </hardware>
@@ -16,7 +16,6 @@
             <state_interface name="position"/>
             <state_interface name="effort" />
         </joint>
-
         <joint name="LR_wheel_joint">
             <command_interface name="velocity">
                 <param name="min">-10</param>
@@ -112,11 +111,63 @@
             <state_interface name="position"/>]
             <state_interface name="effort" />
         </joint>
+    </ros2_control> -->
+
+    <ros2_control name="SaganRealHardware" type="system">
+        <hardware>
+            <!-- 1. Tells controller_manager WHICH plugin to load -->
+            <plugin>sagan_control_hardware_interface/SaganControlHardwareInterface</plugin> 
+
+            <!-- 2. Parameters PASSED TO the hardware interface's on_init -->
+            <param name="i2c_bus_path">/dev/i2c-1</param> 
+            <param name="left_pico_addr">0x15</param>
+            <param name="right_pico_addr">0x16</param> 
+            </hardware>
+        <joint name="LF_wheel_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        <!-- Rear Left Wheel -->
+        <joint name="LR_wheel_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        <!-- Front Right Wheel -->
+        <joint name="RF_wheel_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        <!-- Rear Right Wheel -->
+        <joint name="RR_wheel_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+    
+        <!-- ====================================================== -->
+        <!--    FIX: SENSOR DEFINITIONS were missing here            -->
+        <!-- ====================================================== -->
+        <sensor name="front_left_motor_sensor">
+            <state_interface name="current"/>
+        </sensor>
+        <sensor name="rear_left_motor_sensor">
+            <state_interface name="current"/>
+        </sensor>
+        <sensor name="front_right_motor_sensor">
+            <state_interface name="current"/>
+        </sensor>
+        <sensor name="rear_right_motor_sensor">
+            <state_interface name="current"/>
+        </sensor>
+ 
     </ros2_control>
 
-    <gazebo>
+    <!-- <gazebo>
         <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
             <parameters>$(find sagan_description)/parameters/sagan_controllers_parameters.yaml</parameters>
         </plugin>
-    </gazebo>
+    </gazebo> -->
 </robot>
