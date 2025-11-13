@@ -26,7 +26,7 @@ def generate_launch_description():
     
     pathModelFile = os.path.join(get_package_share_directory(namePackage), modelFileRelativePath)
     
-    robotDescription= xacro.process_file(pathModelFile).toxml()
+    robotDescription= xacro.process_file(pathModelFile, mappings={'use_sim_time': use_sim_time}).toxml()
 
     controllers_yaml_path = os.path.join(
         get_package_share_directory("sagan_description"), 
@@ -150,6 +150,25 @@ def generate_launch_description():
         parameters=[{"use_sim_time": use_sim_time}],
     )
 
+    nodeSaganPath = Node(
+        package='sagan_kanayama_controller',
+        executable='sagan_kanayama_controller',
+        name='sagan_kanayama_controller',
+        output='screen',
+        parameters=[{
+            'k_x': 10.0,
+            'k_y': 25.0,
+            'k_theta': 10.0,
+            'max_linear_velocity': 1.0,
+            'max_angular_velocity': 1.0,
+            'lookahead_distance': 0.5,
+            'robot_base_frame': 'base_footprint',
+            'odom_frame': 'odom',
+            'use_sim_time': use_sim_time
+        }]
+    )
+
+
     # --- Launch Description ---
 
     launchDescriptionObject = LaunchDescription()
@@ -158,9 +177,9 @@ def generate_launch_description():
     launchDescriptionObject.add_action(use_sim_time_arg)
     
     # 2. Add Simulation-Only nodes
-    #launchDescriptionObject.add_action(gazeboLaunch)
-    #launchDescriptionObject.add_action(spawnModelNodeGazebo)
-    #launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
+    # launchDescriptionObject.add_action(gazeboLaunch)
+    # launchDescriptionObject.add_action(spawnModelNodeGazebo)
+    # launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
 
     # 3. Add Real-Robot-Only node
     launchDescriptionObject.add_action(control_node)
@@ -173,5 +192,6 @@ def generate_launch_description():
     launchDescriptionObject.add_action(nodeSaganOdometry)
     launchDescriptionObject.add_action(nodeSaganEKF)
     launchDescriptionObject.add_action(nodeSaganDiffDriver)
+    launchDescriptionObject.add_action(nodeSaganPath)
 
     return launchDescriptionObject

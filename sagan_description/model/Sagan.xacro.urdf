@@ -3,32 +3,22 @@
      Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
      For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
 <robot name="Sagan" xmlns:xacro="http://ros.org/wiki/xacro">
-  
-  <xacro:include filename="$(find sagan_description)/model/Sagan.gazebo"/>
-  <xacro:include filename="$(find sagan_description)/model/ros2_control.xacro"/>
 
+  <xacro:arg name="use_sim_time" default="true"/>
   
+  <!-- Include the right files if is the simulation or real robot -->
+  <xacro:if value="${arg use_sim_time}">
+    <xacro:include filename="$(find sagan_description)/model/Sagan.gazebo"/>
+    <xacro:include filename="$(find sagan_description)/model/GazeboRos2Control.xacro"/>
+  </xacro:if>
+
+  <xacro:unless value="${arg use_sim_time}">
+    <xacro:include filename="$(find sagan_description)/model/HardwareInterface.xacro"/>
+  </xacro:unless>
+
   <link name="odom"></link> 
-   
   <link name="efk_reference"></link>
-
   <link name="noise_odometry"> </link>
-
-  <!--
-   <link name="world"/>
-  <joint name="world_to_odom" type="continuous">
-        <parent link="world"/>
-        <child link="odom"/>
-        <origin xyz="0 0 1" rpy="0 0 0"/>
-  </joint>  
-  -->
-  
-  <!--<link name="base_footprint"></link>
-    <joint name="base_link_joint" type="fixed">
-      <parent link="base_footprint"/>
-      <child link="base_link"/>
-    </joint>
-  -->
 
   <link name="gz_reference"></link>
   <joint name="odom_gz_reference_joint" type="fixed">

@@ -67,10 +67,11 @@ void SaganOdometryNode::timer_callback()
     double wheel_radius = 0.06;
     double wheel_base = 0.370; 
     double slipage_coefficient = 0;//0.166508;
+    double angular_slip_coeff = 0.5;
 
     // --- 1. CLEAN ODOMETRY ---
     {
-        double v_theta = wheel_radius * (omega_clean_[2] - omega_clean_[0]) / wheel_base;
+        double v_theta = wheel_radius * (omega_clean_[2] - omega_clean_[0]) * angular_slip_coeff/ wheel_base;
         double v_forward = wheel_radius * (omega_clean_[0] + omega_clean_[2]) / 2.0;
         double v_lateral = slipage_coefficient * v_theta;
 
