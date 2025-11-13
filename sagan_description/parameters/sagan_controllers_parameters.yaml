@@ -5,8 +5,8 @@ controller_manager:
     sagan_control_hardware_interface:
      type: sagan_control_hardware_interface/SaganControlHardwareInterface
     
-    # sagan_drive_controller:
-    #  type: sagan_drive_controller/SaganDriverController
+    sagan_drive_controller:
+     type: sagan_drive_controller/SaganDriverController
     
     joint_state_broadcaster:
      type: joint_state_broadcaster/JointStateBroadcaster

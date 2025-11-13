@@ -4,8 +4,9 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, Command
 from launch.conditions import IfCondition, UnlessCondition
+from launch_ros.parameter_descriptions import ParameterValue
 import xacro
 
 def generate_launch_description():
@@ -26,7 +27,12 @@ def generate_launch_description():
     
     pathModelFile = os.path.join(get_package_share_directory(namePackage), modelFileRelativePath)
     
-    robotDescription= xacro.process_file(pathModelFile, mappings={'use_sim_time': use_sim_time}).toxml()
+    #robotDescription= xacro.process_file(pathModelFile, mappings={'use_sim_time': use_sim_time}).toxml()
+
+    robotDescription = ParameterValue(Command([
+        'xacro ', pathModelFile,
+        ' use_sim_time:=', use_sim_time
+    ]), value_type=str)
 
     controllers_yaml_path = os.path.join(
         get_package_share_directory("sagan_description"), 
@@ -147,7 +153,7 @@ def generate_launch_description():
         package='sagan_differential_driver',
         executable='sagan_differential_driver',
         output='screen',
-        parameters=[{"use_sim_time": use_sim_time}],
+        condition=IfCondition(use_sim_time),
     )
 
     nodeSaganPath = Node(
@@ -177,9 +183,10 @@ def generate_launch_description():
     launchDescriptionObject.add_action(use_sim_time_arg)
     
     # 2. Add Simulation-Only nodes
-    # launchDescriptionObject.add_action(gazeboLaunch)
-    # launchDescriptionObject.add_action(spawnModelNodeGazebo)
-    # launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
+    launchDescriptionObject.add_action(gazeboLaunch)
+    launchDescriptionObject.add_action(spawnModelNodeGazebo)
+    launchDescriptionObject.add_action(start_gazebo_ros_bridge_cmd)
+    launchDescriptionObject.add_action(diff_drive_base_controller_spawner)
 
     # 3. Add Real-Robot-Only node
     launchDescriptionObject.add_action(control_node)
@@ -188,7 +195,6 @@ def generate_launch_description():
     # 4. Add Common nodes
     launchDescriptionObject.add_action(nodeRobotStatePublisher)
     launchDescriptionObject.add_action(joint_state_broadcaster_spawner)
-    #launchDescriptionObject.add_action(diff_drive_base_controller_spawner)
     launchDescriptionObject.add_action(nodeSaganOdometry)
     launchDescriptionObject.add_action(nodeSaganEKF)
     launchDescriptionObject.add_action(nodeSaganDiffDriver)
