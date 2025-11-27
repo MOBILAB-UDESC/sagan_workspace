@@ -124,7 +124,7 @@ void SaganKalmanFilter::predict()
     double ay = x_(5);
     double theta = x_(6);
     double omega = x_(7);
-    double slipage_coefficient = -0.166508; // This could also be a parameter
+    double slipage_coefficient = 0;//0.166508; // This could also be a parameter
 
     // Pre-calculate sin and cos of theta
     double ct = std::cos(theta);
@@ -134,15 +134,14 @@ void SaganKalmanFilter::predict()
     // --- Jacobian (F) Matrix Calculation ---
     Eigen::Matrix<double, STATE_SIZE, STATE_SIZE> F = Eigen::Matrix<double, STATE_SIZE, STATE_SIZE>::Identity();
     
-    F(0, 2) = ct * dt; F(0, 3) = -st * dt; F(0, 4) = 0.5 * ct * dt2; F(0, 5) = -0.5 * st * dt2;
+     F(0, 2) = ct * dt; F(0, 3) = -st * dt; F(0, 4) = 0.5 * ct * dt2; F(0, 5) = -0.5 * st * dt2;
     F(0, 6) = (-vx * st - vy * ct) * dt + 0.5 * (-ax * st - ay * ct) * dt2;
     
     F(1, 2) = st * dt; F(1, 3) = ct * dt; F(1, 4) = 0.5 * st * dt2; F(1, 5) = 0.5 * ct * dt2;
     F(1, 6) = (vx * ct - vy * st) * dt + 0.5 * (ax * ct - ay * st) * dt2;
 
     F(2, 4) = dt;
-
-    F(3, 3) = 0.0; F(3, 5) = 0.0; F(3, 7) = slipage_coefficient;
+    F(3, 5) = dt;  // Added: vy depends on ay
 
     F(6, 7) = dt;
 
@@ -151,7 +150,7 @@ void SaganKalmanFilter::predict()
     x_pred(0) = x_(0) + (vx*ct - vy*st)*dt + 0.5*(ax*ct - ay*st)*dt2;
     x_pred(1) = x_(1) + (vx*st + vy*ct)*dt + 0.5*(ax*st + ay*ct)*dt2;
     x_pred(2) = vx + ax * dt;
-    x_pred(3) = slipage_coefficient * omega;
+    x_pred(3) = vy + ay * dt;  // Changed: now calculated like vx
     x_pred(4) = ax;
     x_pred(5) = ay;
     x_pred(6) = theta + omega * dt;

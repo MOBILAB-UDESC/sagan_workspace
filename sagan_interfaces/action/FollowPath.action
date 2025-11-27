@@ -1,0 +1,12 @@
+# Goal definition
+nav_msgs/Path path
+
+---
+# Result definition
+bool success
+string message
+
+---
+# Feedback definition  
+uint32 current_waypoint
+uint32 total_waypoints

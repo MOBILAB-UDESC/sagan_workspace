@@ -156,27 +156,35 @@ def generate_launch_description():
         condition=IfCondition(use_sim_time),
     )
 
+    # nodeSaganPath = Node(
+    #     package='sagan_kanayama_controller',
+    #     executable='sagan_kanayama_controller',
+    #     name='sagan_kanayama_controller',
+    #     output='screen',
+    #     parameters=[{
+    #         'k_x': 10.0,
+    #         'k_y': 25.0,
+    #         'k_theta': 10.0,
+    #         'max_linear_velocity': 1.0,
+    #         'max_angular_velocity': 1.0,
+    #         'lookahead_distance': 0.5,
+    #         'robot_base_frame': 'base_footprint',
+    #         'odom_frame': 'odom',
+    #         'use_sim_time': use_sim_time
+    #     }]
+    # )
+
     nodeSaganPath = Node(
-        package='sagan_kanayama_controller',
-        executable='sagan_kanayama_controller',
-        name='sagan_kanayama_controller',
+        package='kobuki_controllers_cpp',
+        executable='main',
+        name='kobuki_controllers_cpp',
         output='screen',
         parameters=[{
-            'k_x': 10.0,
-            'k_y': 25.0,
-            'k_theta': 10.0,
-            'max_linear_velocity': 1.0,
-            'max_angular_velocity': 1.0,
-            'lookahead_distance': 0.5,
-            'robot_base_frame': 'base_footprint',
-            'odom_frame': 'odom',
             'use_sim_time': use_sim_time
         }]
     )
 
-
     # --- Launch Description ---
-
     launchDescriptionObject = LaunchDescription()
     
     # 1. Add the use_sim_time argument

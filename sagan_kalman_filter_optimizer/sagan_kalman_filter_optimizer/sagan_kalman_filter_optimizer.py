@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
+from rclpy.action import ActionClient
 from rclpy.parameter import Parameter
 from rclpy.parameter_client import AsyncParameterClient
 from ros_gz_interfaces.srv import SetEntityPose
 from ros_gz_interfaces.msg import Entity
 from std_srvs.srv import Trigger
-from geometry_msgs.msg import Pose, Point, Quaternion, Twist
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Pose, Point, Quaternion, Twist, PoseStamped
+from nav_msgs.msg import Odometry, Path
 import math
 import numpy as np
 import time
+import threading
+
+# Import your action
+from sagan_interfaces.action import FollowPath
+
 
 class SaganKalmanFilterOptimizer(Node):
     def __init__(self):
@@ -21,9 +27,9 @@ class SaganKalmanFilterOptimizer(Node):
         self.num_generations = 50
         self.mutation_rate = 0.1
         self.crossover_rate = 0.8
-        self.elitism_count = 1 # Number of best individuals to carry over
-        self.gene_min_val = 0.001     # Min value for any covariance element
-        self.gene_max_val = 1000.0     # Max value for any covariance element
+        self.elitism_count = 1  # Number of best individuals to carry over
+        self.gene_min_val = 0.001  # Min value for any covariance element
+        self.gene_max_val = 1000.0  # Max value for any covariance element
 
         # --- Dynamic Configuration Variables ---
         self.num_genes = None
@@ -36,8 +42,10 @@ class SaganKalmanFilterOptimizer(Node):
         self.reset_gz_pose_client = self.create_client(SetEntityPose, '/world/default/set_pose')
         self.reset_odom_client = self.create_client(Trigger, 'reset_odometry')
         self.reset_ekf_client = self.create_client(Trigger, 'reset_ekf')
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
-
+        
+        # Action client for path following
+        self.action_client = ActionClient(self, FollowPath, 'follow_path')
+        
         # --- ROS 2 Subscribers for Fitness Evaluation ---
         self.ground_truth_topic = "/odom_gz"
         self.ekf_topic = "/odom/filtered"
@@ -52,7 +60,13 @@ class SaganKalmanFilterOptimizer(Node):
         self.ekf_sub = self.create_subscription(Odometry, self.ekf_topic, self.ekf_callback, 10)
         self.noisy_sub = self.create_subscription(Odometry, self.noisy_odom_topic, self.noisy_callback, 10)
 
-        self.get_logger().info("Kalman Filter Optimizer is ready.")
+        # Action execution tracking
+        self.action_completed = False
+        self.action_success = False
+        self.action_feedback = None
+        self.max_action_time = 120.0  # Maximum time to complete path (seconds)
+
+        self.get_logger().info("Kalman Filter Optimizer with Action Server is ready.")
 
     # --- Subscriber Callbacks ---
     def ground_truth_callback(self, msg):
@@ -66,6 +80,77 @@ class SaganKalmanFilterOptimizer(Node):
     def noisy_callback(self, msg):
         time_sec = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         self.noisy_data.append((time_sec, msg.pose.pose))
+
+    # --- Action Client Methods ---
+    def wait_for_action_server(self, timeout_sec=10.0):
+        """Wait for the action server to be available"""
+        self.get_logger().info("Waiting for action server...")
+        if not self.action_client.wait_for_server(timeout_sec=timeout_sec):
+            self.get_logger().error(f"Action server not available after {timeout_sec} seconds")
+            return False
+        self.get_logger().info("Action server connected!")
+        return True
+
+    def execute_path_via_action(self, path_msg):
+        """Execute path using the action server"""
+        self.action_completed = False
+        self.action_success = False
+        self.action_feedback = None
+
+        # Send goal
+        goal_msg = FollowPath.Goal()
+        goal_msg.path = path_msg
+
+        self.get_logger().info("Sending path to action server...")
+        future = self.action_client.send_goal_async(
+            goal_msg,
+            feedback_callback=self.action_feedback_callback
+        )
+        
+        # Wait for goal to be accepted
+        rclpy.spin_until_future_complete(self, future)
+        goal_handle = future.result()
+        
+        if not goal_handle.accepted:
+            self.get_logger().error("Goal rejected by action server")
+            return False
+
+        self.get_logger().info("Goal accepted, waiting for completion...")
+        
+        # Get result
+        result_future = goal_handle.get_result_async()
+        start_time = time.time()
+        
+        while not self.action_completed and (time.time() - start_time) < self.max_action_time:
+            rclpy.spin_once(self, timeout_sec=0.1)
+            
+        if not self.action_completed:
+            self.get_logger().warn("Action timed out, cancelling...")
+            future = goal_handle.cancel_goal_async()
+            rclpy.spin_until_future_complete(self, future)
+            return False
+            
+        return self.action_success
+
+    def action_feedback_callback(self, feedback_msg):
+        """Callback for action feedback"""
+        self.action_feedback = feedback_msg.feedback
+        self.get_logger().debug(f"Action progress: {self.action_feedback.current_waypoint}/{self.action_feedback.total_waypoints}")
+
+    def action_result_callback(self, future):
+        """Callback for action result"""
+        try:
+            result = future.result().result
+            self.action_completed = True
+            self.action_success = result.success
+            if result.success:
+                self.get_logger().info("Action completed successfully!")
+            else:
+                self.get_logger().warn(f"Action failed: {result.message}")
+        except Exception as e:
+            self.get_logger().error(f"Exception in action result: {str(e)}")
+            self.action_completed = True
+            self.action_success = False
 
     def setup_optimizer_sync(self):
         self.get_logger().info("Waiting for EKF parameter service...")
@@ -130,13 +215,50 @@ class SaganKalmanFilterOptimizer(Node):
 
         return np.array(aligned_gt), np.array(aligned_ekf), np.array(aligned_noisy)
 
+    def calculate_global_error_metrics(self, gt, ekf, noisy):
+        """
+        Calculate comprehensive error metrics including:
+        - Global position error
+        - Error correction effectiveness
+        - Consistency over time
+        """
+        if gt is None or len(gt) < 10:
+            return 0.0, 0.0, 0.0
+
+        # 1. Global Position Error (RMSE)
+        position_errors = np.sqrt(np.sum((gt - ekf)**2, axis=1))
+        global_rmse = np.sqrt(np.mean(position_errors**2))
+        
+        # 2. Error Correction Effectiveness
+        noisy_errors = np.sqrt(np.sum((gt - noisy)**2, axis=1))
+        ekf_errors = position_errors
+        
+        # Calculate improvement ratio (how much EKF reduces error)
+        improvement_ratio = np.mean(noisy_errors / (ekf_errors + 1e-6))
+        
+        # 3. Consistency and Smoothness
+        # Check if EKF output is smoother than noisy data
+        ekf_derivative = np.diff(ekf, axis=0)
+        noisy_derivative = np.diff(noisy, axis=0)
+        
+        ekf_smoothness = np.mean(np.abs(ekf_derivative))
+        noisy_smoothness = np.mean(np.abs(noisy_derivative))
+        
+        smoothness_improvement = noisy_smoothness / (ekf_smoothness + 1e-6)
+        
+        return global_rmse, improvement_ratio, smoothness_improvement
+
     # --- Core GA Functions ---
     def run_optimizer(self):
         if not self.setup_optimizer_sync():
             self.get_logger().error("Optimizer setup failed. Shutting down.")
             return
 
-        self.get_logger().info("Starting Genetic Algorithm...")
+        if not self.wait_for_action_server():
+            self.get_logger().error("Action server not available. Shutting down.")
+            return
+
+        self.get_logger().info("Starting Genetic Algorithm with Action Server...")
         population = self.initialize_population()
         best_overall_individual = None
         best_overall_fitness = -1
@@ -176,36 +298,103 @@ class SaganKalmanFilterOptimizer(Node):
 
     def evaluate_fitness(self, individual):
         self.set_kalman_params(individual)
-        time.sleep(0.2) # Reduced sleep
+        time.sleep(0.2)
 
         self.reset_simulation_state()
         self.ground_truth_data.clear()
         self.ekf_data.clear()
         self.noisy_data.clear()
-        time.sleep(0.2) # Reduced sleep
+        time.sleep(0.2)
 
-        self.execute_defined_path()
+        # Create and execute path via action
+        path_msg = self.create_test_path()
+        success = self.execute_path_via_action(path_msg)
+
+        if not success:
+            self.get_logger().warn("Path execution failed, returning low fitness")
+            return 0.1  # Low but non-zero fitness for failed executions
 
         gt, ekf, noisy = self.align_and_get_poses()
 
-        if gt is None:
-            self.get_logger().error("Could not align poses, returning fitness of 0.")
+        if gt is None or len(gt) < 10:
+            self.get_logger().error("Insufficient data for evaluation, returning fitness of 0.")
             return 0.0
         
-        rmse_filtered_vs_truth = np.sqrt(np.mean((gt - ekf)**2))
-        rmse_noisy_vs_truth = np.sqrt(np.mean((gt - noisy)**2))
+        # Calculate comprehensive error metrics
+        global_rmse, improvement_ratio, smoothness_improvement = self.calculate_global_error_metrics(gt, ekf, noisy)
         
-        if rmse_filtered_vs_truth < 1e-6:
-             rmse_filtered_vs_truth = 1e-6
-
-        accuracy_score = 1.0 / (1.0 + rmse_filtered_vs_truth)
-        improvement_ratio = rmse_noisy_vs_truth / rmse_filtered_vs_truth
-        fitness =  accuracy_score * improvement_ratio
+        # Enhanced fitness function focusing on global error and error correction
+        if global_rmse < 1e-6:
+            global_rmse = 1e-6
+            
+        # Primary component: inverse of global error (minimize global error)
+        accuracy_component = 1.0 / (1.0 + global_rmse)
+        
+        # Secondary component: error correction effectiveness
+        correction_component = min(improvement_ratio, 10.0)  # Cap at 10x improvement
+        
+        # Tertiary component: smoothness improvement
+        smoothness_component = min(smoothness_improvement, 5.0)  # Cap at 5x smoother
+        
+        # Combined fitness with weights
+        fitness = (0.6 * accuracy_component + 
+                  0.3 * correction_component + 
+                  0.1 * smoothness_component)
 
         self.get_logger().info(
-            f"Aligned Points: {len(gt)}, RMSE(filt): {rmse_filtered_vs_truth:.4f}, Fitness: {fitness:.4f}"
+            f"Points: {len(gt)}, Global RMSE: {global_rmse:.4f}, "
+            f"Improvement: {improvement_ratio:.2f}x, Smoothness: {smoothness_improvement:.2f}x, "
+            f"Fitness: {fitness:.4f}"
         )
         return fitness
+
+    def create_test_path(self):
+        """Create a circular path for the action server"""
+        path_msg = Path()
+        path_msg.header.stamp = self.get_clock().now().to_msg()
+        path_msg.header.frame_id = "odom"
+        
+        # Circular path parameters
+        center_x, center_y = 0.0, 0.0  # Center of the circle
+        radius = 4.0  # Radius of the circle
+        num_points = 2000  # Number of waypoints (more points = smoother circle)
+        
+        # Generate circular waypoints
+        for i in range(num_points + 1):  # +1 to close the circle
+            angle = 2.0 * math.pi * i / num_points
+            x = center_x + radius * math.cos(angle)
+            y = center_y + radius * math.sin(angle)
+            
+            pose_stamped = PoseStamped()
+            pose_stamped.header.stamp = self.get_clock().now().to_msg()
+            pose_stamped.header.frame_id = "odom"
+            pose_stamped.pose.position.x = x
+            pose_stamped.pose.position.y = y
+            pose_stamped.pose.position.z = 0.0
+            
+            # Calculate orientation tangent to the circle
+            if i < num_points:
+                next_angle = 2.0 * math.pi * (i + 1) / num_points
+                next_x = center_x + radius * math.cos(next_angle)
+                next_y = center_y + radius * math.sin(next_angle)
+            else:
+                # For the last point, use orientation from last to first point
+                next_x = center_x + radius * math.cos(0)
+                next_y = center_y + radius * math.sin(0)
+            
+            # Calculate yaw angle (tangent to circle)
+            yaw = math.atan2(next_y - y, next_x - x)
+            
+            # Convert yaw to quaternion
+            pose_stamped.pose.orientation.x = 0.0
+            pose_stamped.pose.orientation.y = 0.0
+            pose_stamped.pose.orientation.z = math.sin(yaw / 2.0)
+            pose_stamped.pose.orientation.w = math.cos(yaw / 2.0)
+            
+            path_msg.poses.append(pose_stamped)
+
+        self.get_logger().info(f"Created circular path with {len(path_msg.poses)} waypoints")
+        return path_msg
 
     # --- GA Operators ---
     def initialize_population(self):
@@ -259,23 +448,6 @@ class SaganKalmanFilterOptimizer(Node):
         future_ekf = self.reset_ekf_client.call_async(reset_req)
         rclpy.spin_until_future_complete(self, future_ekf)
 
-    def execute_defined_path(self):
-        path = [(0.6, 0.3, 5.0), (0.6, -0.4, 5.0), (0.6, 0.0, 5.0), (1.2, 0.4, 5.0)]
-        for linear, angular, duration in path:
-            self.publish_velocity(linear, angular)
-            self.spin_for_duration(duration)
-        self.publish_velocity(0.0, 0.0)
-        time.sleep(1)
-
-    def publish_velocity(self, linear, angular):
-        twist = Twist(); twist.linear.x = linear; twist.angular.z = angular
-        self.cmd_vel_pub.publish(twist)
-
-    def spin_for_duration(self, duration_sec):
-        start_time = self.get_clock().now()
-        while (self.get_clock().now() - start_time).nanoseconds / 1e9 < duration_sec:
-            rclpy.spin_once(self, timeout_sec=0.01)
-
     def log_individual(self, individual):
         end_q = self.q_size
         end_odom_r = end_q + self.odom_r_size
@@ -295,4 +467,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-

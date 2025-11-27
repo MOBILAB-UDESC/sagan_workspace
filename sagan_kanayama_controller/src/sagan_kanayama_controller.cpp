@@ -1,4 +1,7 @@
+#include "sagan_interfaces/action/follow_path.hpp"
+
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/path.hpp>
@@ -9,6 +12,14 @@
 #include <memory>
 #include <vector>
 #include <cmath>
+#include <thread>
+#include <chrono>
+#include <limits>
+#include <algorithm>
+
+
+using FollowPath = sagan_interfaces::action::FollowPath;
+using GoalHandleFollowPath = rclcpp_action::ServerGoalHandle<FollowPath>;
 
 class SaganKanayamaController : public rclcpp::Node
 {
@@ -20,10 +31,12 @@ public:
         this->declare_parameter("k_y", 25.0);
         this->declare_parameter("k_theta", 10.0);
         this->declare_parameter("max_linear_velocity", 1.0);
-        this->declare_parameter("max_angular_velocity", 1.0);
-        this->declare_parameter("lookahead_distance", 0.5);
+        this->declare_parameter("max_angular_velocity", 0.25);
+        this->declare_parameter("lookahead_distance", 0.2);
         this->declare_parameter("robot_base_frame", "base_link");
         this->declare_parameter("odom_frame", "odom");
+        this->declare_parameter("goal_tolerance", 0.1);
+        this->declare_parameter("control_frequency", 100.0);
 
         // Obter parâmetros
         k_x_ = this->get_parameter("k_x").as_double();
@@ -34,6 +47,8 @@ public:
         lookahead_distance_ = this->get_parameter("lookahead_distance").as_double();
         robot_base_frame_ = this->get_parameter("robot_base_frame").as_string();
         odom_frame_ = this->get_parameter("odom_frame").as_string();
+        goal_tolerance_ = this->get_parameter("goal_tolerance").as_double();
+        double control_frequency = this->get_parameter("control_frequency").as_double();
 
         // Inicializar TF
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
@@ -43,18 +58,23 @@ public:
         cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 
         // Subscritores
-        path_subscriber_ = this->create_subscription<nav_msgs::msg::Path>(
-            "path", 10, std::bind(&SaganKanayamaController::pathCallback, this, std::placeholders::_1));
-        
         odom_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "odom", 10, std::bind(&SaganKanayamaController::odomCallback, this, std::placeholders::_1));
+            "odom/filtered", 10, std::bind(&SaganKanayamaController::odomCallback, this, std::placeholders::_1));
+
+        // Action Server
+        action_server_ = rclcpp_action::create_server<FollowPath>(
+            this,
+            "follow_path",
+            std::bind(&SaganKanayamaController::handle_goal, this, std::placeholders::_1, std::placeholders::_2),
+            std::bind(&SaganKanayamaController::handle_cancel, this, std::placeholders::_1),
+            std::bind(&SaganKanayamaController::handle_accepted, this, std::placeholders::_1));
 
         // Timer para controle
         control_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(50),  // 20 Hz
+            std::chrono::milliseconds(static_cast<int>(1000.0 / control_frequency)),
             std::bind(&SaganKanayamaController::controlLoop, this));
 
-        RCLCPP_INFO(this->get_logger(), "Controlador Kanayama inicializado");
+        RCLCPP_INFO(this->get_logger(), "Controlador Kanayama com Action Server inicializado");
         RCLCPP_INFO(this->get_logger(), "Ganhos: Kx=%.2f, Ky=%.2f, Kθ=%.2f", k_x_, k_y_, k_theta_);
     }
 
@@ -62,36 +82,84 @@ private:
     // Parâmetros do controlador
     double k_x_, k_y_, k_theta_;
     double max_linear_velocity_, max_angular_velocity_;
-    double lookahead_distance_;
+    double lookahead_distance_, goal_tolerance_;
     std::string robot_base_frame_, odom_frame_;
 
     // Estado atual do robô
     geometry_msgs::msg::Pose current_pose_;
     bool pose_received_ = false;
     
-    // Trajetória de referência
+    // Trajetória de referência e estado do action
     nav_msgs::msg::Path current_path_;
-    bool path_received_ = false;
+    bool path_active_ = false;
     size_t current_waypoint_index_ = 0;
+    std::shared_ptr<GoalHandleFollowPath> current_goal_handle_;
 
     // TF
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-    // Publicadores e Subscritores
+    // Publicadores, Subscritores e Action Server
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_publisher_;
-    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_subscriber_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscriber_;
     rclcpp::TimerBase::SharedPtr control_timer_;
+    rclcpp_action::Server<FollowPath>::SharedPtr action_server_;
 
-    void pathCallback(const nav_msgs::msg::Path::SharedPtr msg)
+    // Callbacks do Action Server
+    rclcpp_action::GoalResponse handle_goal(
+        const rclcpp_action::GoalUUID & uuid,
+        std::shared_ptr<const FollowPath::Goal> goal)
     {
-        if (!msg->poses.empty()) {
-            current_path_ = *msg;
-            current_waypoint_index_ = 0;
-            path_received_ = true;
-            RCLCPP_INFO(this->get_logger(), "Nova trajetória recebida com %zu pontos", msg->poses.size());
+        RCLCPP_INFO(this->get_logger(), "Recebido goal para seguir path com %zu pontos", goal->path.poses.size());
+        (void)uuid;
+        
+        if (goal->path.poses.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "Path vazio rejeitado");
+            return rclcpp_action::GoalResponse::REJECT;
         }
+        
+        return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    }
+
+    rclcpp_action::CancelResponse handle_cancel(
+        const std::shared_ptr<GoalHandleFollowPath> goal_handle)
+    {
+        RCLCPP_INFO(this->get_logger(), "Goal cancelado");
+        
+        // Check if this is the current active goal
+        if (goal_handle != current_goal_handle_) {
+            RCLCPP_WARN(this->get_logger(), "Cancel request for non-active goal");
+            return rclcpp_action::CancelResponse::REJECT;
+        }
+
+        // Stop the robot immediately
+        geometry_msgs::msg::Twist stop_msg;
+        cmd_vel_publisher_->publish(stop_msg);
+        
+        // Mark path as inactive
+        path_active_ = false;
+        
+        RCLCPP_INFO(this->get_logger(), "Goal cancellation accepted");
+        return rclcpp_action::CancelResponse::ACCEPT;
+    }
+
+    void handle_accepted(const std::shared_ptr<GoalHandleFollowPath> goal_handle)
+    {
+        // If already executing another goal, cancel the previous one
+        if (path_active_ && current_goal_handle_) {
+            RCLCPP_INFO(this->get_logger(), "Preempting previous goal");
+            auto result = std::make_shared<FollowPath::Result>();
+            result->success = false;
+            result->message = "Preempted by new goal";
+            current_goal_handle_->abort(result);
+        }
+
+        current_goal_handle_ = goal_handle;
+        current_path_ = goal_handle->get_goal()->path;
+        current_waypoint_index_ = 0;
+        path_active_ = true;
+
+        RCLCPP_INFO(this->get_logger(), "Execução do path iniciada com %zu waypoints", current_path_.poses.size());
     }
 
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -191,50 +259,92 @@ private:
         v = std::clamp(v, -max_linear_velocity_, max_linear_velocity_);
         omega = std::clamp(omega, -max_angular_velocity_, max_angular_velocity_);
 
-        RCLCPP_DEBUG(this->get_logger(), 
+        RCLCPP_INFO(this->get_logger(), 
                     "Erros: x_e=%.3f, y_e=%.3f, θ_e=%.3f | Comando: v=%.3f, ω=%.3f", 
                     x_e, y_e, theta_e, v, omega);
     }
 
     void controlLoop()
     {
-        if (!path_received_ || !pose_received_) {
+        if (!path_active_ || !pose_received_ || !current_goal_handle_) {
             return;
         }
 
-        if (current_waypoint_index_ >= current_path_.poses.size()) {
-            // Parar quando atingir o final da trajetória
+        // Check if goal was cancelled
+        if (!current_goal_handle_->is_canceling()) {
+            // Normal execution path
+            
+            // Check if path is completed
+            if (current_waypoint_index_ >= current_path_.poses.size()) {
+                auto result = std::make_shared<FollowPath::Result>();
+                result->success = true;
+                result->message = "Path completed successfully";
+                current_goal_handle_->succeed(result);
+                RCLCPP_INFO(this->get_logger(), "Path completado com sucesso");
+                
+                // Stop the robot
+                geometry_msgs::msg::Twist stop_msg;
+                cmd_vel_publisher_->publish(stop_msg);
+                
+                path_active_ = false;
+                current_goal_handle_.reset();
+                return;
+            }
+
+            // Execute normal control logic
+            geometry_msgs::msg::Pose robot_pose = getRobotPose();
+            current_waypoint_index_ = findTargetWaypoint(robot_pose);
+            geometry_msgs::msg::Pose target_pose = current_path_.poses[current_waypoint_index_].pose;
+
+            double v, omega;
+            computeControl(robot_pose, target_pose, v, omega);
+
+            // Publish velocity command
+            geometry_msgs::msg::Twist cmd_vel;
+            cmd_vel.linear.x = v;
+            cmd_vel.angular.z = omega;
+            cmd_vel_publisher_->publish(cmd_vel);
+
+            // Publish feedback
+            auto feedback = std::make_shared<FollowPath::Feedback>();
+            feedback->current_waypoint = current_waypoint_index_;
+            feedback->total_waypoints = current_path_.poses.size();
+            current_goal_handle_->publish_feedback(feedback);
+
+            // Check waypoint completion
+            if (current_waypoint_index_ == current_path_.poses.size() - 1) {
+                double dx = target_pose.position.x - robot_pose.position.x;
+                double dy = target_pose.position.y - robot_pose.position.y;
+                double distance = std::sqrt(dx*dx + dy*dy);
+
+                if (distance < goal_tolerance_) {
+                    current_waypoint_index_++;
+                    RCLCPP_INFO(this->get_logger(), "Goal final atingido");
+                }
+            } else if (current_waypoint_index_ < current_path_.poses.size() - 1) {
+                double dx = target_pose.position.x - robot_pose.position.x;
+                double dy = target_pose.position.y - robot_pose.position.y;
+                double distance = std::sqrt(dx*dx + dy*dy);
+
+                if (distance < goal_tolerance_) {
+                    current_waypoint_index_++;
+                    RCLCPP_INFO(this->get_logger(), "Waypoint %zu atingido", current_waypoint_index_ - 1);
+                }
+            }
+        } else {
+            // Goal is being cancelled - send cancelled result
+            RCLCPP_INFO(this->get_logger(), "Sending cancellation result");
+            auto result = std::make_shared<FollowPath::Result>();
+            result->success = false;
+            result->message = "Goal cancelled";
+            current_goal_handle_->canceled(result);
+            
+            // Stop the robot
             geometry_msgs::msg::Twist stop_msg;
             cmd_vel_publisher_->publish(stop_msg);
-            return;
-        }
-
-        // Obter pose atual do robô
-        geometry_msgs::msg::Pose robot_pose = getRobotPose();
-
-        // Encontrar waypoint alvo
-        current_waypoint_index_ = findTargetWaypoint(robot_pose);
-        geometry_msgs::msg::Pose target_pose = current_path_.poses[current_waypoint_index_].pose;
-
-        // Calcular comando de controle
-        double v, omega;
-        computeControl(robot_pose, target_pose, v, omega);
-
-        // Publicar comando de velocidade
-        geometry_msgs::msg::Twist cmd_vel;
-        cmd_vel.linear.x = v;
-        cmd_vel.angular.z = omega;
-        cmd_vel_publisher_->publish(cmd_vel);
-
-        // Verificar se atingiu o waypoint atual
-        double dx = target_pose.position.x - robot_pose.position.x;
-        double dy = target_pose.position.y - robot_pose.position.y;
-        double distance = std::sqrt(dx*dx + dy*dy);
-
-        if (distance < 0.1 && current_waypoint_index_ < current_path_.poses.size() - 1) {
-            current_waypoint_index_++;
-            RCLCPP_INFO(this->get_logger(), "Waypoint %zu atingido, indo para %zu", 
-                       current_waypoint_index_ - 1, current_waypoint_index_);
+            
+            path_active_ = false;
+            current_goal_handle_.reset();
         }
     }
 };

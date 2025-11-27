@@ -10,6 +10,9 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SaganCmd.msg"
@@ -18,11 +21,21 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SaganStates.msg"
   "msg/SteeringState.msg"
   "msg/WheelState.msg"
-  DEPENDENCIES std_msgs
+  "action/FollowPath.action"
+  DEPENDENCIES 
+  std_msgs
+  geometry_msgs 
+  nav_msgs 
+  action_msgs 
 )
 
-ament_export_dependencies(rosidl_default_runtime)
-ament_export_dependencies(rclcpp)
-ament_export_dependencies(std_msgs)
+ament_export_dependencies(
+  rosidl_default_runtime
+  rclcpp
+  std_msgs
+  geometry_msgs
+  nav_msgs
+  action_msgs
+)
 
-ament_package()
+  ament_package()
