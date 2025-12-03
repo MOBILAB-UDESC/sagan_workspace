@@ -1,7 +1,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration, Command
@@ -184,6 +184,11 @@ def generate_launch_description():
         }]
     )
 
+    delayed_nodeSaganPath = TimerAction(
+        period=5.0,  # Delay for 5 seconds
+        actions=[nodeSaganPath]
+    )
+
     # --- Launch Description ---
     launchDescriptionObject = LaunchDescription()
     
@@ -206,6 +211,7 @@ def generate_launch_description():
     launchDescriptionObject.add_action(nodeSaganOdometry)
     launchDescriptionObject.add_action(nodeSaganEKF)
     launchDescriptionObject.add_action(nodeSaganDiffDriver)
-    launchDescriptionObject.add_action(nodeSaganPath)
+    #launchDescriptionObject.add_action(nodeSaganPath)
+    launchDescriptionObject.add_action(delayed_nodeSaganPath)
 
     return launchDescriptionObject

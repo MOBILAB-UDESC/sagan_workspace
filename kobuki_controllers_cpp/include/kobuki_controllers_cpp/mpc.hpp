@@ -6,6 +6,7 @@
 #include <vector>
 #include <iostream>
 #include <string>
+#include <cmath>
 #include "trajectory.hpp"
 
 using namespace casadi;

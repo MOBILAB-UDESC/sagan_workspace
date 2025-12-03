@@ -5,6 +5,7 @@
 #include <cmath>
 #include <string>
 #include <fstream>
+#include <iostream>
 // #define M_PI 3.14159265358979323846
 
 class Trajectory
@@ -45,6 +46,11 @@ public:
                         std::vector<double> _v = {}, 
                         std::vector<double> _w = {}, 
                         std::string filename = "reference.txt"); // To graph the trajectory reference or any other trajectory
+    void setTrajectoryFromWaypoints(
+        const std::vector<std::pair<double, double>>& waypoints,
+        double _dt,
+        double desired_velocity = 0.5,
+        std::string interpolation_type = "cubic");
 
 };
 

@@ -30,14 +30,27 @@ public:
     nz = zmin.size();
     nu = umin.size();
 
-    path.setTrajectory(5, 10, dt, 5, {}, "infinite");
+    //path.setTrajectory(-5, 10, dt, 1, {}, "circle");
+
+    std::vector<std::pair<double, double>> waypoints = {
+        {0.0, 0.0}, 
+        {3.0, 3.0}, 
+        {6.0, 3.0},   
+        {6.0, -3.0},    
+        {0.0, -3.0}, 
+        {0.0, 3.0}, 
+        {6.0, 3.0}        
+    };
+
+    // Use the new method instead of setTrajectory
+    //path.setTrajectoryFromWaypoints(waypoints, dt, 0.5, "cubic");
 
     mpc = MPC(N, dt,
               umin, umax, zmin, zmax,
               Q, R
     );
     
-    mpc.Z_ref = path.getTrajectory();
+    //mpc.Z_ref = path.getTrajectory();
 
     // mpc.setup_obstacles({0.74, 0.5, 0.05});
     // mpc.setup_obstacles({0.0, 5.0, 0.05});
@@ -57,9 +70,21 @@ public:
     max_iter = mpc.Z_ref.size();
     mpc_output = std::vector<std::vector<double>>(max_iter, std::vector<double>(nz+nu, 0.0));
 
+
+    action_server_ = rclcpp_action::create_server<FollowPath>(
+    this,
+    "follow_path",
+    std::bind(&ControlNodeAction::handleGoal, this, std::placeholders::_1, std::placeholders::_2),
+    std::bind(&ControlNodeAction::handleCancel, this, std::placeholders::_1),
+    std::bind(&ControlNodeAction::handleAccepted, this, std::placeholders::_1));
+
     odom_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
       "/odom/filtered", 10,
       std::bind(&ControlNode::OdomCallback, this, std::placeholders::_1));
+
+    path_subscriber_ = this->create_subscription<nav_msgs::msg::Path>(
+      "/path", 10,
+      std::bind(&ControlNode::PathCallback, this, std::placeholders::_1));
 
     twist_stamped_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
       "/cmd_vel", 10);
@@ -77,6 +102,9 @@ public:
 
 private:
 
+  rclcpp_action::Server<FollowPath>::SharedPtr action_server_;
+
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_subscriber_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscriber_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr twist_stamped_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr predict_path_publisher_;
@@ -99,7 +127,58 @@ private:
   std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> res;
   std::vector<std::vector<double>> U0, Z0, mpc_output, Q, R;
 
+  bool path_received = false;
+
   // **************************************************************************************************
+
+  rclcpp_action::GoalResponse ControlNodeAction::handleGoal(
+  const rclcpp_action::GoalUUID & uuid,
+  std::shared_ptr<const FollowPath::Goal> goal)
+  {
+
+  void PathCallback(const nav_msgs::msg::Path::SharedPtr msg)
+  {
+    if (!path_received)
+    {
+      // Extract waypoints from the received path
+      std::vector<std::pair<double, double>> waypoints;
+      
+      // Check if the path has at least 2 points
+      if (msg->poses.size() < 2) {
+          RCLCPP_WARN(this->get_logger(), "Received path with less than 2 waypoints. Ignoring.");
+          return;
+      }
+      
+      RCLCPP_INFO(this->get_logger(), "Received new path with %zu waypoints", msg->poses.size());
+      
+      // Extract (x, y) coordinates from each pose in the path
+      for (const auto& pose_stamped : msg->poses) {
+          double x = pose_stamped.pose.position.x;
+          double y = pose_stamped.pose.position.y;
+          waypoints.push_back({x, y});
+          
+          // Optional: Print each waypoint for debugging
+          RCLCPP_DEBUG(this->get_logger(), "Waypoint: (%.2f, %.2f)", x, y);
+      }
+      
+      // Generate new trajectory from waypoints
+      path.setTrajectoryFromWaypoints(waypoints, dt, 0.5, "cubic");
+      
+      // Update MPC reference trajectory
+      mpc.Z_ref = path.getTrajectory();
+      
+      // Reset control parameters for the new trajectory
+      max_iter = mpc.Z_ref.size();
+      mpc_iter = 0;
+      
+      // Reset warm-start trajectories
+      Z0 = std::vector<std::vector<double>>(N+1, z0);
+      U0 = std::vector<std::vector<double>>(N, std::vector<double>(nu, 0.0));
+      
+      RCLCPP_INFO(this->get_logger(), "New trajectory generated with %d points", max_iter);
+      path_received = true;
+    }
+  }
 
   void OdomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
@@ -118,12 +197,11 @@ private:
 
   void ControlLoop()
   {
-
     if (mpc_iter < max_iter) {
-      if (mpc.Z_ref[mpc_iter][2] - z0[2] > 3.141592654){
-        z0[2] = z0[2] + 2*(3.141592654);
-      }
-    }
+      double angle_diff = atan2(sin(mpc.Z_ref[mpc_iter][2] - z0[2]),
+                                cos(mpc.Z_ref[mpc_iter][2] - z0[2]));
+      z0[2] = mpc.Z_ref[mpc_iter][2] - angle_diff;
+    }    
 
     auto t_start = std::chrono::steady_clock::now();
     if (mpc_iter > 0 && mpc_iter-1 < int(mpc_output.size())) {
@@ -233,8 +311,8 @@ private:
         outFile << i << " " << mpc.obstacles[i][0] << " " << mpc.obstacles[i][1] << " " << mpc.obstacles[i][2] + mpc.robot_radius + mpc.obstacle_tol << "\n";
     }
     outFile.close();
-
-    rclcpp::shutdown();
+    path_received = false;
+    //rclcpp::shutdown();
   }
 
 };

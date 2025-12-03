@@ -17,8 +17,8 @@ public:
         // Declare parameters
         this->declare_parameter("center_x", 0.0);
         this->declare_parameter("center_y", 0.0);
-        this->declare_parameter("radius", 2.0);
-        this->declare_parameter("num_points", 36);
+        this->declare_parameter("radius", 4.0);
+        this->declare_parameter("num_points", 500);
         this->declare_parameter("frame_id", "map");
         this->declare_parameter("publish_rate", 1.0);
 
@@ -31,8 +31,8 @@ public:
         double publish_rate = this->get_parameter("publish_rate").as_double();
 
         // Create publishers
-        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("path", 10);
-        marker_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("marker", 10);
+        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("/path", 10);
+        marker_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>("/marker", 10);
 
         // Create timer
         auto timer_period = std::chrono::duration<double>(1.0 / publish_rate);
