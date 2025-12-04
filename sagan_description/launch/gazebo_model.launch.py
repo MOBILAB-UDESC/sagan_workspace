@@ -176,7 +176,7 @@ def generate_launch_description():
 
     nodeSaganPath = Node(
         package='kobuki_controllers_cpp',
-        executable='main',
+        executable='path_controller',
         name='kobuki_controllers_cpp',
         output='screen',
         parameters=[{
