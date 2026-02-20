@@ -11,6 +11,7 @@ from geometry_msgs.msg import Pose, Point, Quaternion, Twist, PoseStamped
 from nav_msgs.msg import Odometry, Path
 import math
 import numpy as np
+import pandas as pd
 import time
 import threading
 
@@ -61,7 +62,7 @@ class SaganKalmanFilterOptimizer(Node):
         self.noisy_sub = self.create_subscription(Odometry, self.noisy_odom_topic, self.noisy_callback, 10)
 
         # Action execution tracking
-        self.action_completed = False
+        self.action_completed_event = threading.Event()
         self.action_success = False
         self.action_feedback = None
         self.max_action_time = 120.0  # Maximum time to complete path (seconds)
@@ -92,8 +93,9 @@ class SaganKalmanFilterOptimizer(Node):
         return True
 
     def execute_path_via_action(self, path_msg):
-        """Execute path using the action server"""
-        self.action_completed = False
+        """Execute path using the action server - FIXED VERSION"""
+        # Reset completion event
+        self.action_completed_event.clear()
         self.action_success = False
         self.action_feedback = None
 
@@ -101,35 +103,46 @@ class SaganKalmanFilterOptimizer(Node):
         goal_msg = FollowPath.Goal()
         goal_msg.path = path_msg
 
-        self.get_logger().info("Sending path to action server...")
-        future = self.action_client.send_goal_async(
+        #self.get_logger().info("Sending path to action server...")
+        
+        # Send goal with feedback callback
+        send_goal_future = self.action_client.send_goal_async(
             goal_msg,
             feedback_callback=self.action_feedback_callback
         )
         
         # Wait for goal to be accepted
-        rclpy.spin_until_future_complete(self, future)
-        goal_handle = future.result()
+        rclpy.spin_until_future_complete(self, send_goal_future)
+        goal_handle = send_goal_future.result()
         
         if not goal_handle.accepted:
             self.get_logger().error("Goal rejected by action server")
             return False
 
-        self.get_logger().info("Goal accepted, waiting for completion...")
+        #self.get_logger().info("Goal accepted, waiting for completion...")
         
-        # Get result
+        # Get result future and add callback
         result_future = goal_handle.get_result_async()
-        start_time = time.time()
+        result_future.add_done_callback(self.action_result_callback)
         
-        while not self.action_completed and (time.time() - start_time) < self.max_action_time:
-            rclpy.spin_once(self, timeout_sec=0.1)
+        # Wait for completion or timeout
+        start_time = time.time()
+        while rclpy.ok():
+            # Check if action completed
+            if self.action_completed_event.wait(0.1):  # Wait with timeout
+                break
             
-        if not self.action_completed:
-            self.get_logger().warn("Action timed out, cancelling...")
-            future = goal_handle.cancel_goal_async()
-            rclpy.spin_until_future_complete(self, future)
-            return False
+            # Check timeout
+            elapsed = time.time() - start_time
+            if elapsed > self.max_action_time:
+                self.get_logger().warn(f"Action timed out after {elapsed:.1f}s, cancelling...")
+                cancel_future = goal_handle.cancel_goal_async()
+                rclpy.spin_until_future_complete(self, cancel_future)
+                return False
             
+            # Process callbacks
+            rclpy.spin_once(self, timeout_sec=0)
+        
         return self.action_success
 
     def action_feedback_callback(self, feedback_msg):
@@ -137,20 +150,22 @@ class SaganKalmanFilterOptimizer(Node):
         self.action_feedback = feedback_msg.feedback
         self.get_logger().debug(f"Action progress: {self.action_feedback.current_waypoint}/{self.action_feedback.total_waypoints}")
 
+    # Replace lines 144-156 (the action_result_callback method)
     def action_result_callback(self, future):
-        """Callback for action result"""
+        """Callback for action result - FIXED"""
         try:
-            result = future.result().result
-            self.action_completed = True
-            self.action_success = result.success
-            if result.success:
-                self.get_logger().info("Action completed successfully!")
+            result = future.result()
+            self.action_success = result.result.success
+            if result.result.success:
+                self.get_logger().debug("Action completed successfully!")
             else:
-                self.get_logger().warn(f"Action failed: {result.message}")
+                self.get_logger().warn(f"Action failed")
         except Exception as e:
             self.get_logger().error(f"Exception in action result: {str(e)}")
-            self.action_completed = True
             self.action_success = False
+        finally:
+            # Signal completion
+            self.action_completed_event.set()
 
     def setup_optimizer_sync(self):
         self.get_logger().info("Waiting for EKF parameter service...")
@@ -191,29 +206,45 @@ class SaganKalmanFilterOptimizer(Node):
 
     def align_and_get_poses(self):
         """
-        Aligns EKF and noisy poses to the ground truth timeline based on the closest timestamp
-        and returns three numpy arrays of [x, y] positions for RMSE calculation.
+        Improved version with time windowing and interpolation
         """
         if not self.ground_truth_data or not self.ekf_data or not self.noisy_data:
             return None, None, None
-
+        
+        # Find common time window
+        gt_times = np.array([t for t, p in self.ground_truth_data])
         ekf_times = np.array([t for t, p in self.ekf_data])
         noisy_times = np.array([t for t, p in self.noisy_data])
-
-        aligned_gt, aligned_ekf, aligned_noisy = [], [], []
-
-        for gt_time, gt_pose in self.ground_truth_data:
-            ekf_idx = np.argmin(np.abs(ekf_times - gt_time))
-            noisy_idx = np.argmin(np.abs(noisy_times - gt_time))
-
-            aligned_gt.append([gt_pose.position.x, gt_pose.position.y])
-            aligned_ekf.append([self.ekf_data[ekf_idx][1].position.x, self.ekf_data[ekf_idx][1].position.y])
-            aligned_noisy.append([self.noisy_data[noisy_idx][1].position.x, self.noisy_data[noisy_idx][1].position.y])
-
-        if not aligned_gt:
+        
+        min_time = max(gt_times.min(), ekf_times.min(), noisy_times.min())
+        max_time = min(gt_times.max(), ekf_times.max(), noisy_times.max())
+        
+        if max_time - min_time < 1.0:  # Less than 1 second of common data
+            self.get_logger().warn(f"Insufficient time overlap: {max_time-min_time:.2f}s")
             return None, None, None
+        
+        # Create uniform time vector for interpolation
+        uniform_times = np.linspace(min_time, max_time, num=2000)  # 2000 uniform points
+        
+        # Interpolate positions
+        gt_interp = self.interpolate_poses(uniform_times, self.ground_truth_data)
+        ekf_interp = self.interpolate_poses(uniform_times, self.ekf_data)
+        noisy_interp = self.interpolate_poses(uniform_times, self.noisy_data)
+    
+        return gt_interp, ekf_interp, noisy_interp
 
-        return np.array(aligned_gt), np.array(aligned_ekf), np.array(aligned_noisy)
+    def interpolate_poses(self, target_times, data):
+        """Interpolate poses to target times"""
+        times = np.array([t for t, p in data])
+        x_vals = np.array([p.position.x for t, p in data])
+        y_vals = np.array([p.position.y for t, p in data])
+        
+        # Linear interpolation
+        from scipy import interpolate
+        fx = interpolate.interp1d(times, x_vals, kind='linear', fill_value='extrapolate')
+        fy = interpolate.interp1d(times, y_vals, kind='linear', fill_value='extrapolate')
+        
+        return np.column_stack([fx(target_times), fy(target_times)])
 
     def calculate_global_error_metrics(self, gt, ekf, noisy):
         """
@@ -310,6 +341,23 @@ class SaganKalmanFilterOptimizer(Node):
         path_msg = self.create_test_path()
         success = self.execute_path_via_action(path_msg)
 
+        # self.get_logger().info("Waiting for final data points...")
+        # time.sleep(3.0)  # Wait 3 seconds
+
+        # # Diagnostic logging
+        # self.get_logger().info(f"Data points collected:")
+        # self.get_logger().info(f"  Ground Truth: {len(self.ground_truth_data)}")
+        # self.get_logger().info(f"  EKF: {len(self.ekf_data)}")
+        # self.get_logger().info(f"  Noisy: {len(self.noisy_data)}")
+
+        # df = pd.DataFrame({
+        #     'gazebo': self.ground_truth_data,
+        #     'ekf': self.ekf_data,
+        #     'odom_noisy': self.noisy_data
+        # })
+
+        # df.to_csv('data.csv', index=False)
+
         if not success:
             self.get_logger().warn("Path execution failed, returning low fitness")
             return 0.1  # Low but non-zero fitness for failed executions
@@ -349,21 +397,39 @@ class SaganKalmanFilterOptimizer(Node):
         return fitness
 
     def create_test_path(self):
-        """Create a circular path for the action server"""
+        """Create a lemniscate (figure-eight) path rotated by 135° and starting at origin"""
         path_msg = Path()
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = "odom"
         
-        # Circular path parameters
-        center_x, center_y = 0.0, 0.0  # Center of the circle
-        radius = 4.0  # Radius of the circle
-        num_points = 2000  # Number of waypoints (more points = smoother circle)
+        # Lemniscate parameters
+        a = 5.0  # Size parameter
+        num_points = 2000  # Number of waypoints
         
-        # Generate circular waypoints
-        for i in range(num_points + 1):  # +1 to close the circle
-            angle = 2.0 * math.pi * i / num_points
-            x = center_x + radius * math.cos(angle)
-            y = center_y + radius * math.sin(angle)
+        # Start at t = π/2 to ensure we begin at origin
+        # For Bernoulli's lemniscate: x = a*cos(t)/(1+sin²(t)), y = a*sin(t)*cos(t)/(1+sin²(t))
+        # At t = π/2: cos(π/2) = 0, sin(π/2) = 1 → x = 0, y = 0
+        t_start = math.pi / 2  # Start at π/2 to begin at origin
+        t_end = math.pi / 2 + 2.0 * math.pi  # One full cycle (2π) from starting point
+        
+        # Rotation angle in radians (135°)
+        rotation_angle = 135.0 * math.pi / 180.0
+        cos_theta = math.cos(rotation_angle)
+        sin_theta = math.sin(rotation_angle)
+        
+        # Generate lemniscate waypoints
+        for i in range(num_points + 1):
+            # Parameter t from t_start to t_end
+            t = t_start + (t_end - t_start) * i / num_points
+            
+            # Parametric equations for lemniscate (Bernoulli's lemniscate)
+            denominator = 1.0 + math.sin(t)**2
+            x_original = a * math.cos(t) / denominator
+            y_original = a * math.sin(t) * math.cos(t) / denominator
+            
+            # Apply 135° rotation
+            x = x_original * cos_theta - y_original * sin_theta
+            y = x_original * sin_theta + y_original * cos_theta
             
             pose_stamped = PoseStamped()
             pose_stamped.header.stamp = self.get_clock().now().to_msg()
@@ -372,17 +438,24 @@ class SaganKalmanFilterOptimizer(Node):
             pose_stamped.pose.position.y = y
             pose_stamped.pose.position.z = 0.0
             
-            # Calculate orientation tangent to the circle
+            # Calculate orientation (tangent to the path)
+            # Use next point for calculating direction
             if i < num_points:
-                next_angle = 2.0 * math.pi * (i + 1) / num_points
-                next_x = center_x + radius * math.cos(next_angle)
-                next_y = center_y + radius * math.sin(next_angle)
+                next_t = t_start + (t_end - t_start) * (i + 1) / num_points
             else:
-                # For the last point, use orientation from last to first point
-                next_x = center_x + radius * math.cos(0)
-                next_y = center_y + radius * math.sin(0)
+                # For the last point, use first point (closed loop)
+                next_t = t_start
             
-            # Calculate yaw angle (tangent to circle)
+            # Calculate next point
+            next_denominator = 1.0 + math.sin(next_t)**2
+            next_x_original = a * math.cos(next_t) / next_denominator
+            next_y_original = a * math.sin(next_t) * math.cos(next_t) / next_denominator
+            
+            # Apply same rotation to next point
+            next_x = next_x_original * cos_theta - next_y_original * sin_theta
+            next_y = next_x_original * sin_theta + next_y_original * cos_theta
+            
+            # Calculate yaw angle (tangent to the rotated curve)
             yaw = math.atan2(next_y - y, next_x - x)
             
             # Convert yaw to quaternion
@@ -392,8 +465,13 @@ class SaganKalmanFilterOptimizer(Node):
             pose_stamped.pose.orientation.w = math.cos(yaw / 2.0)
             
             path_msg.poses.append(pose_stamped)
-
-        self.get_logger().info(f"Created circular path with {len(path_msg.poses)} waypoints")
+    
+        # Force the first point to be exactly at origin
+        if len(path_msg.poses) > 0:
+            path_msg.poses[0].pose.position.x = 0.0
+            path_msg.poses[0].pose.position.y = 0.0
+    
+        #self.get_logger().info(f"Created 135° rotated lemniscate path with {len(path_msg.poses)} waypoints")
         return path_msg
 
     # --- GA Operators ---

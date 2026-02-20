@@ -41,27 +41,10 @@ public:
     nz = zmin.size();
     nu = umin.size();
 
-    //path.setTrajectory(-5, 10, dt, 1, {}, "circle");
-
-    std::vector<std::pair<double, double>> waypoints = {
-        {0.0, 0.0}, 
-        {3.0, 3.0}, 
-        {6.0, 3.0},   
-        {6.0, -3.0},    
-        {0.0, -3.0}, 
-        {0.0, 3.0}, 
-        {6.0, 3.0}        
-    };
-
-    // Use the new method instead of setTrajectory
-    //path.setTrajectoryFromWaypoints(waypoints, dt, 0.5, "cubic");
-
     mpc = MPC(N, dt,
               umin, umax, zmin, zmax,
               Q, R
     );
-    
-    //mpc.Z_ref = path.getTrajectory();
 
     // mpc.setup_obstacles({0.74, 0.5, 0.05});
     // mpc.setup_obstacles({0.0, 5.0, 0.05});
@@ -116,7 +99,7 @@ public:
       handle_accepted);
 
     odom_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      "/odom/filtered", 10,
+      "/odom_gz", 10,
       std::bind(&ControlNode::OdomCallback, this, std::placeholders::_1));
 
     twist_stamped_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
@@ -300,7 +283,7 @@ private:
       }
       
       // Generate new trajectory from waypoints
-      path.setTrajectoryFromWaypoints(waypoints, dt, 0.5, "cubic");
+      path.setTrajectoryFromWaypoints(waypoints, dt, 0.5, "linear");
       
       // Update MPC reference trajectory
       mpc.Z_ref = path.getTrajectory();

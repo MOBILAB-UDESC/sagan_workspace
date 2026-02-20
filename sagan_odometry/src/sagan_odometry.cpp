@@ -98,14 +98,14 @@ void SaganOdometryNode::timer_callback()
         
         odom_publisher_->publish(odom_msg);
 
-        geometry_msgs::msg::TransformStamped transform_stamped;
-        transform_stamped.header.stamp = this->get_clock()->now();
-        transform_stamped.header.frame_id = "odom";
-        transform_stamped.child_frame_id = "base_footprint";
-        transform_stamped.transform.translation.x = x_;
-        transform_stamped.transform.translation.y = y_;
-        transform_stamped.transform.rotation = tf2::toMsg(q);
-        tf_broadcaster_->sendTransform(transform_stamped);
+        //geometry_msgs::msg::TransformStamped transform_stamped;
+        //transform_stamped.header.stamp = this->get_clock()->now();
+        //transform_stamped.header.frame_id = "odom";
+        //transform_stamped.child_frame_id = "base_footprint";
+        //transform_stamped.transform.translation.x = x_;
+        //transform_stamped.transform.translation.y = y_;
+        //transform_stamped.transform.rotation = tf2::toMsg(q);
+        //tf_broadcaster_->sendTransform(transform_stamped);
     }
 
     // --- 2. NOISY ODOMETRY ---
@@ -122,7 +122,7 @@ void SaganOdometryNode::timer_callback()
 
         auto noisy_odom_msg = nav_msgs::msg::Odometry();
         noisy_odom_msg.header.stamp = this->now();
-        noisy_odom_msg.header.frame_id = "odom";
+        noisy_odom_msg.header.frame_id = "map";
         noisy_odom_msg.child_frame_id = "noise_odometry";
 
         noisy_odom_msg.pose.pose.position.x = noisy_x_;
@@ -139,7 +139,7 @@ void SaganOdometryNode::timer_callback()
 
         geometry_msgs::msg::TransformStamped transform_stamped;
         transform_stamped.header.stamp = this->get_clock()->now();
-        transform_stamped.header.frame_id = "odom";
+        transform_stamped.header.frame_id = "map";
         transform_stamped.child_frame_id = "noise_odometry";
         transform_stamped.transform.translation.x = noisy_x_;
         transform_stamped.transform.translation.y = noisy_y_;

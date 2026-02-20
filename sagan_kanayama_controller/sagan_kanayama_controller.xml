@@ -1,0 +1,7 @@
+<library path="sagan_kanayama_controller">
+  <class name="sagan_kanayama_controller/KanayamaController" 
+         type="sagan_controllers::KanayamaController" 
+         base_class_type="nav2_core::Controller">
+    <description>Kanayama control implementation for Sagan robot.</description>
+  </class>
+</library>

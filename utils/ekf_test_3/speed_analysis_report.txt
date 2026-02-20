@@ -1,0 +1,77 @@
+======================================================================
+ROBOT SPEED ANALYSIS REPORT
+======================================================================
+
+SPEED (2D VELOCITY MAGNITUDE) STATISTICS:
+--------------------------------------------------
+Ground Truth:
+  Mean:       0.4775 m/s
+  Std Dev:    0.1180 m/s
+  Max:        0.6000 m/s
+  Min:        0.0000 m/s
+  RMS:        0.4919 m/s
+Noisy:
+  Mean:       0.4766 m/s
+  Std Dev:    0.1200 m/s
+  Max:        0.6380 m/s
+  Min:        0.0000 m/s
+  RMS:        0.4915 m/s
+Filtered:
+  Mean:       0.4767 m/s
+  Std Dev:    0.1185 m/s
+  Max:        0.6125 m/s
+  Min:        0.0000 m/s
+  RMS:        0.4912 m/s
+
+YAW RATE STATISTICS:
+--------------------------------------------------
+Ground Truth:
+  Mean:       -0.0001 rad/s
+  Std Dev:    11.9138 rad/s
+  Max:        628.0180 rad/s
+  Min:        -628.0193 rad/s
+  RMS:        11.9138 rad/s
+Noisy:
+  Mean:       0.0041 rad/s
+  Std Dev:    0.2375 rad/s
+  Max:        0.6659 rad/s
+  Min:        -0.8312 rad/s
+  RMS:        0.2375 rad/s
+Filtered:
+  Mean:       0.0004 rad/s
+  Std Dev:    0.2025 rad/s
+  Max:        0.3903 rad/s
+  Min:        -0.4359 rad/s
+  RMS:        0.2025 rad/s
+
+VELOCITY ACCURACY (RMSE):
+--------------------------------------------------
+Speed:
+  Noisy RMSE:      0.023190 m/s
+  Filtered RMSE:   0.014223 m/s
+  Improvement:     38.67 %
+
+Yaw Rate:
+  Noisy RMSE:      11.919365 rad/s
+  Filtered RMSE:   11.917894 rad/s
+  Improvement:     0.01 %
+
+X Velocity:
+  Noisy RMSE:      0.023164 m/s
+  Filtered RMSE:   0.014189 m/s
+  Improvement:     38.75 %
+
+Y Velocity:
+  Noisy RMSE:      0.034150 m/s
+  Filtered RMSE:   0.034031 m/s
+  Improvement:     0.35 %
+
+MOTION CHARACTERISTICS:
+--------------------------------------------------
+Total Travel Time:      55.58 s
+Total Distance:         26.55 m
+Average Speed:          0.4776 m/s
+Maximum Acceleration:   3.3746 m/s²
+Maximum Jerk:           321.2717 m/s³
+
+======================================================================

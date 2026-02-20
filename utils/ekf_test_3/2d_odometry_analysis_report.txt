@@ -1,0 +1,52 @@
+======================================================================
+2D ODOMETRY FILTERING PERFORMANCE REPORT (XY Plane)
+======================================================================
+
+POSITION ACCURACY - 2D RMSE:
+--------------------------------------------------
+Noisy Odometry:     0.643882 m
+Filtered Odometry:  0.230375 m
+Improvement:        64.22 %
+
+POSITION ACCURACY - Individual Axes:
+--------------------------------------------------
+X-Axis:
+  Noisy RMSE:      0.381657 m
+  Filtered RMSE:   0.147884 m
+  Improvement:     61.25 %
+
+Y-Axis:
+  Noisy RMSE:      0.518577 m
+  Filtered RMSE:   0.176644 m
+  Improvement:     65.94 %
+
+YAW ANGLE ACCURACY:
+--------------------------------------------------
+Noisy Odometry:     0.163812 rad
+                        (9.39°)
+Filtered Odometry:  0.049740 rad
+                        (2.85°)
+Improvement:        69.64 %
+
+DATA STATISTICS:
+--------------------------------------------------
+ODOM_GT:
+  Duration: 55.58 seconds
+  Samples:  5559
+  X range:  [-4.020, 4.017] m
+  Y range:  [-4.019, 4.043] m
+  Path length: 26.141 m
+ODOM_NOISE:
+  Duration: 55.58 seconds
+  Samples:  5559
+  X range:  [-4.535, 4.221] m
+  Y range:  [-4.034, 3.276] m
+  Path length: 26.091 m
+ODOM_FILTERED:
+  Duration: 55.58 seconds
+  Samples:  5559
+  X range:  [-4.077, 4.189] m
+  Y range:  [-4.021, 3.816] m
+  Path length: 26.094 m
+
+======================================================================

@@ -1,0 +1,39 @@
+============================================================
+ODOMETRY FILTERING PERFORMANCE REPORT
+============================================================
+
+POSITION ACCURACY (RMSE):
+----------------------------------------
+Noisy Odometry:     0.361031 m
+Filtered Odometry:  0.178742 m
+Improvement:        50.49 %
+
+ORIENTATION ACCURACY (RMSE):
+----------------------------------------
+Noisy Odometry:     0.096564 rad
+                        (5.53°)
+Filtered Odometry:  0.040204 rad
+                        (2.30°)
+Improvement:        58.37 %
+
+DATA STATISTICS:
+----------------------------------------
+ODOM_GT:
+  Duration: 54.73 seconds
+  Samples:  5474
+  X range:  [-4.02, 4.02] m
+  Y range:  [-4.02, 4.05] m
+  Z range:  [0.00, 0.00] m
+ODOM_NOISE:
+  Duration: 54.73 seconds
+  Samples:  5474
+  X range:  [-4.19, 4.22] m
+  Y range:  [-4.00, 3.64] m
+  Z range:  [0.00, 0.00] m
+ODOM_FILTERED:
+  Duration: 54.73 seconds
+  Samples:  5474
+  X range:  [-3.96, 4.19] m
+  Y range:  [-4.02, 3.92] m
+  Z range:  [0.00, 0.00] m
+============================================================

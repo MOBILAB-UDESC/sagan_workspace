@@ -2,13 +2,13 @@ sagan_kalman_filter:
   ros__parameters:
     # Frame IDs and update rate
     odom_frame_id: "odom"
-    base_frame_id: "efk_reference"
-    predict_frequency: 200.0 # Frequency in Hz for the prediction step
-
+    base_frame_id: "base_footprint"
+  
     # Process noise covariance (Q) diagonal elements.
     # This represents the uncertainty in our motion model.
     # Order: [x, y, vx, vy, ax, ay, theta, omega]
-    Q_diag: [106.2343, 142.2259, 10.0, 160.9998, 608.8385, 721.4349, 173.6776, 87.9757]
+    #Q_diag: [135.9355,104.0209,99.6468,675.173,585.8654,25.2962,9.7089,178.0408]
+    Q_diag: [350.0976,27.5860,22.5960,59.5154,53.8323,22.2123,0.6228,75.9135]
 
     # --- Sensor Configurations ---
 
@@ -16,11 +16,13 @@ sagan_kalman_filter:
     odom_sensor:
       # Which state variables does this sensor measure?
       # Order: [x,    y,    vx,   vy,   ax,   ay,   theta, omega]
-      measurement_map: [false, false, true, true, false, false, true, true]
+      measurement_map: [false, false, true, true, false, false, false, true]
 
       # Measurement noise covariance (R) for the enabled states above.
       # The number of elements MUST match the number of `true` values in the map.
-      R_diag: [255.1543, 374.6235, 150.3799, 243.0709]
+      #R_diag: [246.9619,166.6292,539.2506,163.804]
+      R_diag: [53.27434,19.9272,1.5949]
+
     # IMU Sensor Settings
     imu_sensor:
       # Which state variables does this sensor measure?
@@ -30,4 +32,6 @@ sagan_kalman_filter:
       measurement_map: [false, false, false, false, true, true, true, true]
       
       # Measurement noise covariance (R) for the enabled states above.
-      R_diag: [498.8809, 100.0, 23.0799, 179.971]
+      #R_diag: [383.8781,990.9458,225.9812,19.0416]
+      R_diag: [39.3703,67.5945,448.4812,92.1388]
+      

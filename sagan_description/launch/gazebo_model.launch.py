@@ -4,7 +4,7 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
-from launch.substitutions import LaunchConfiguration, Command
+from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
 from launch.conditions import IfCondition, UnlessCondition
 from launch_ros.parameter_descriptions import ParameterValue
 import xacro
@@ -59,7 +59,7 @@ def generate_launch_description():
     gazeboLaunch = IncludeLaunchDescription(
         gazebo_rosPackageLaunch, 
         launch_arguments={
-            "gz_args": [" -r -v -v4 " + os.path.join(get_package_share_directory("sagan_description"), "worlds/empty_world.sdf")],
+            "gz_args": [" -r -v -v4 " + os.path.join(get_package_share_directory("sagan_description"), "worlds/playground.sdf")],
             "on_exit_shutdown": "true"
         }.items(),
         condition=IfCondition(use_sim_time)
@@ -118,7 +118,7 @@ def generate_launch_description():
         package="robot_state_publisher",
         executable="robot_state_publisher",
         output="screen",
-        parameters=[{"robot_description": robotDescription, "use_sim_time": use_sim_time}]
+        parameters=[{"robot_description": robotDescription, 'publish_frequency': 100.0, "use_sim_time": use_sim_time}]
     )
 
     joint_state_broadcaster_spawner = Node(
@@ -156,37 +156,59 @@ def generate_launch_description():
         condition=IfCondition(use_sim_time),
     )
 
-    # nodeSaganPath = Node(
-    #     package='sagan_kanayama_controller',
-    #     executable='sagan_kanayama_controller',
-    #     name='sagan_kanayama_controller',
-    #     output='screen',
-    #     parameters=[{
-    #         'k_x': 10.0,
-    #         'k_y': 25.0,
-    #         'k_theta': 10.0,
-    #         'max_linear_velocity': 1.0,
-    #         'max_angular_velocity': 1.0,
-    #         'lookahead_distance': 0.5,
-    #         'robot_base_frame': 'base_footprint',
-    #         'odom_frame': 'odom',
-    #         'use_sim_time': use_sim_time
-    #     }]
-    # )
-
     nodeSaganPath = Node(
-        package='kobuki_controllers_cpp',
-        executable='path_controller',
-        name='kobuki_controllers_cpp',
-        output='screen',
-        parameters=[{
-            'use_sim_time': use_sim_time
-        }]
+         package='sagan_kanayama_controller',
+         executable='sagan_kanayama_controller',
+         name='sagan_kanayama_controller',
+         output='screen',
+         parameters=[{
+             'k_x': 10.0,
+             'k_y': 25.0,
+             'k_theta': 10.0,
+             'max_linear_velocity': 1.0,
+             'max_angular_velocity': 1.0,
+             'lookahead_distance': 0.5,
+             'robot_base_frame': 'base_footprint',
+             'odom_frame': 'odom',
+             'use_sim_time': use_sim_time
+         }]
     )
+
+    #nodeSaganPath = Node(
+    #    package='kobuki_controllers_cpp',
+    #    executable='path_controller',
+    #    name='kobuki_controllers_cpp',
+    #    output='screen',
+    #    parameters=[{
+    #        'use_sim_time': use_sim_time
+    #    }]
+    #)
 
     delayed_nodeSaganPath = TimerAction(
         period=5.0,  # Delay for 5 seconds
         actions=[nodeSaganPath]
+    )
+
+    slam_launch_path = os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')
+    slam_params_file = os.path.join(get_package_share_directory('sagan_description'), 'parameters', 'slam_parameters.yaml')
+
+    SlamToolbox = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(slam_launch_path),
+        launch_arguments={
+            'slam_params_file': slam_params_file,
+            'use_sim_time': use_sim_time
+        }.items()
+    )
+
+    nav2_launch_path = os.path.join(get_package_share_directory('nav2_bringup'), 'launch', 'navigation_launch.py')
+    nav2_params_path = os.path.join(get_package_share_directory('sagan_description'), 'parameters', 'amcl_params.yaml')
+
+    nodeNavigation = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(nav2_launch_path),
+        launch_arguments={
+            'params_file': nav2_params_path,
+            'use_sim_time': use_sim_time
+        }.items()
     )
 
     # --- Launch Description ---
@@ -211,7 +233,8 @@ def generate_launch_description():
     launchDescriptionObject.add_action(nodeSaganOdometry)
     launchDescriptionObject.add_action(nodeSaganEKF)
     launchDescriptionObject.add_action(nodeSaganDiffDriver)
-    #launchDescriptionObject.add_action(nodeSaganPath)
     launchDescriptionObject.add_action(delayed_nodeSaganPath)
+    launchDescriptionObject.add_action(SlamToolbox)
+    launchDescriptionObject.add_action(nodeNavigation)
 
     return launchDescriptionObject

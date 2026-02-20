@@ -18,13 +18,16 @@ public:
         // --- Parameters ---
         this->declare_parameter<double>("wheel_radius", 0.060);
         this->declare_parameter<double>("wheel_separation", 0.370);
+        this->declare_parameter<double>("friction_factor", 0.6);
 
         // Read parameters
         this->get_parameter("wheel_radius", wheel_radius_);
         this->get_parameter("wheel_separation", wheel_separation_);
+        this->get_parameter("friction_factor", friction_factor_);
 
         RCLCPP_INFO(this->get_logger(), "Using wheel radius: %.4f m", wheel_radius_);
         RCLCPP_INFO(this->get_logger(), "Using wheel separation: %.4f m", wheel_separation_);
+        RCLCPP_INFO(this->get_logger(), "Using friction factor: %.4f m", friction_factor_);
 
         publisher_ = this->create_publisher<sagan_interfaces::msg::SaganCmd>("/SaganCommands", 1);
 
@@ -42,8 +45,8 @@ private:
 
         // --- Inverse Kinematics Calculation ---
         // See Python file for detailed formula explanation.
-        double right_wheel_vel = (linear_vel + (angular_vel * wheel_separation_ / 2.0)) / wheel_radius_;
-        double left_wheel_vel = (linear_vel - (angular_vel * wheel_separation_ / 2.0)) / wheel_radius_;
+        double right_wheel_vel = (linear_vel + (angular_vel * wheel_separation_ * friction_factor_ / 2.0)) / wheel_radius_;
+        double left_wheel_vel = (linear_vel - (angular_vel * wheel_separation_ * friction_factor_ / 2.0)) / wheel_radius_;
 
         auto message = sagan_interfaces::msg::SaganCmd();
         
@@ -61,6 +64,7 @@ private:
 
     double wheel_radius_;
     double wheel_separation_;
+    double friction_factor_;
 };
 
 int main(int argc, char *argv[])
