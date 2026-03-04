@@ -18,7 +18,7 @@ public:
         // --- Parameters ---
         this->declare_parameter<double>("wheel_radius", 0.060);
         this->declare_parameter<double>("wheel_separation", 0.370);
-        this->declare_parameter<double>("friction_factor", 0.6);
+        this->declare_parameter<double>("friction_factor", 2.0);
 
         // Read parameters
         this->get_parameter("wheel_radius", wheel_radius_);

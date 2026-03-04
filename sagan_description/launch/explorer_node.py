@@ -17,23 +17,36 @@ def generate_launch_description():
         default_value='true',
         description='Use simulation (Gazebo) clock if true'
     )
-    
+
+    declare_namespace_argument = DeclareLaunchArgument(
+        "namespace",
+        default_value="",
+        description="Namespace for the explore node",
+    )
+ 
     # 2. Create a LaunchConfiguration to hold the value of the argument
     use_sim_time = LaunchConfiguration('use_sim_time')
+    namespace = LaunchConfiguration("namespace")
 
-    m_explore_launch_path = os.path.join(get_package_share_directory('explore_lite'), 'launch', 'explore.launch.py')
     m_explore_params_path = os.path.join(get_package_share_directory('sagan_description'), 'parameters', 'explore.yaml')
 
-    nodeExplore = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(m_explore_launch_path),
-        launch_arguments={
-            'params_file': m_explore_params_path,
-            'use_sim_time': use_sim_time
-        }.items()
+    remappings = [("/tf", "tf"), ("/tf_static", "tf_static")]
+
+    nodeExplore = Node(
+        package="explore_lite",
+        name="explore_node",
+        namespace=namespace,
+        executable="explore",
+        parameters=[m_explore_params_path, {"use_sim_time": use_sim_time}],
+        output="screen",
+        remappings=remappings,
     )
-    
+
     launchDescriptionObject = LaunchDescription()
     launchDescriptionObject.add_action(use_sim_time_arg)
+    launchDescriptionObject.add_action(declare_namespace_argument)
     launchDescriptionObject.add_action(nodeExplore)
 
     return launchDescriptionObject
+
+    

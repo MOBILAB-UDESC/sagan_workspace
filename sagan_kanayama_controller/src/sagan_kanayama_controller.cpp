@@ -1,6 +1,4 @@
 #include "sagan_kanayama_controller.hpp"
-#include "nav2_util/node_utils.hpp"
-#include "nav2_util/geometry_utils.hpp"
 #include "pluginlib/class_list_macros.hpp"
 
 namespace sagan_controllers
@@ -15,12 +13,14 @@ void KanayamaController::configure(
   auto node = node_.lock();
   tf_ = tf;
 
-  nav2_util::declare_parameter_if_not_declared(node, name + ".k_x", rclcpp::ParameterValue(10.0));
-  nav2_util::declare_parameter_if_not_declared(node, name + ".k_y", rclcpp::ParameterValue(25.0));
-  nav2_util::declare_parameter_if_not_declared(node, name + ".k_theta", rclcpp::ParameterValue(10.0));
+  // Declare Parameters
+  nav2_util::declare_parameter_if_not_declared(node, name + ".k_x", rclcpp::ParameterValue(1.5));
+  nav2_util::declare_parameter_if_not_declared(node, name + ".k_y", rclcpp::ParameterValue(5.0));
+  nav2_util::declare_parameter_if_not_declared(node, name + ".k_theta", rclcpp::ParameterValue(2.0));
   nav2_util::declare_parameter_if_not_declared(node, name + ".desired_v", rclcpp::ParameterValue(0.3));
-  nav2_util::declare_parameter_if_not_declared(node, name + ".max_v", rclcpp::ParameterValue(1.0));
-  nav2_util::declare_parameter_if_not_declared(node, name + ".max_omega", rclcpp::ParameterValue(0.5));
+  nav2_util::declare_parameter_if_not_declared(node, name + ".max_v", rclcpp::ParameterValue(0.8));
+  nav2_util::declare_parameter_if_not_declared(node, name + ".max_omega", rclcpp::ParameterValue(1.0));
+  nav2_util::declare_parameter_if_not_declared(node, name + ".lookahead_dist", rclcpp::ParameterValue(0.4));
 
   node->get_parameter(name + ".k_x", k_x_);
   node->get_parameter(name + ".k_y", k_y_);
@@ -28,11 +28,24 @@ void KanayamaController::configure(
   node->get_parameter(name + ".desired_v", desired_v_);
   node->get_parameter(name + ".max_v", max_v_);
   node->get_parameter(name + ".max_omega", max_omega_);
+  node->get_parameter(name + ".lookahead_dist", lookahead_dist_);
+
+  // Frequency check
+  double controller_frequency;
+  node->get_parameter("controller_frequency", controller_frequency);
+  control_period_ = 1.0 / controller_frequency;
 }
 
 void KanayamaController::setPlan(const nav_msgs::msg::Path & path)
 {
   global_plan_ = path;
+}
+
+double KanayamaController::normalize_angle(double angle)
+{
+  while (angle > M_PI) angle -= 2.0 * M_PI;
+  while (angle < -M_PI) angle += 2.0 * M_PI;
+  return angle;
 }
 
 geometry_msgs::msg::TwistStamped KanayamaController::computeVelocityCommands(
@@ -47,11 +60,16 @@ geometry_msgs::msg::TwistStamped KanayamaController::computeVelocityCommands(
 
   if (global_plan_.poses.empty()) return cmd_vel;
 
-  // 1. Target Point (Simplification: tracking the nearest point on the path)
-  // In a production setup, you'd use a lookahead distance.
-  const auto& ref_pose = global_plan_.poses.front().pose;
+  // 1. Find Lookahead Point (The Carrot)
+  size_t target_idx = 0;
+  for (size_t i = 0; i < global_plan_.poses.size(); ++i) {
+    target_idx = i;
+    double d = nav2_util::geometry_utils::euclidean_distance(pose.pose, global_plan_.poses[i].pose);
+    if (d > lookahead_dist_) break;
+  }
+  const auto & ref_pose = global_plan_.poses[target_idx].pose;
 
-  // 2. State Extraction
+  // 2. Extract State
   double x_c = pose.pose.position.x;
   double y_c = pose.pose.position.y;
   double theta_c = tf2::getYaw(pose.pose.orientation);
@@ -60,25 +78,26 @@ geometry_msgs::msg::TwistStamped KanayamaController::computeVelocityCommands(
   double y_r = ref_pose.position.y;
   double theta_r = tf2::getYaw(ref_pose.orientation);
 
-  // 3. Error in Robot Frame
+  // 3. Transform Error to Robot Frame
   double dx = x_r - x_c;
   double dy = y_r - y_c;
-  
   double e_x = std::cos(theta_c) * dx + std::sin(theta_c) * dy;
   double e_y = -std::sin(theta_c) * dx + std::cos(theta_c) * dy;
-  
-  double e_theta = theta_r - theta_c;
-  while (e_theta > M_PI) e_theta -= 2.0 * M_PI;
-  while (e_theta < -M_PI) e_theta += 2.0 * M_PI;
+  double e_theta = normalize_angle(theta_r - theta_c);
 
-  // 4. Reference velocities (assuming constant for the path segment)
+  // 4. Extract Reference Velocities (Reconstructing Trajectory)
   double v_r = desired_v_;
-  double omega_r = 0.0; // Can be derived from path curvature
+  double omega_r = 0.0;
+  if (target_idx + 1 < global_plan_.poses.size()) {
+    double next_theta = tf2::getYaw(global_plan_.poses[target_idx + 1].pose.orientation);
+    omega_r = normalize_angle(next_theta - theta_r) / control_period_;
+  }
 
   // 5. Kanayama Law
   double v = v_r * std::cos(e_theta) + k_x_ * e_x;
   double omega = omega_r + v_r * (k_y_ * e_y + k_theta_ * std::sin(e_theta));
 
+  // 6. Output and Clamping
   cmd_vel.twist.linear.x = std::clamp(v, -max_v_, max_v_);
   cmd_vel.twist.angular.z = std::clamp(omega, -max_omega_, max_omega_);
 

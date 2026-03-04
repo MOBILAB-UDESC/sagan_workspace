@@ -67,7 +67,7 @@ void SaganOdometryNode::timer_callback()
     double wheel_radius = 0.06;
     double wheel_base = 0.370; 
     double slipage_coefficient = 0;//-0.166508;
-    double angular_slip_coeff = 1;
+    double angular_slip_coeff = 0.5;
 
     // --- 1. CLEAN ODOMETRY ---
     {
@@ -110,7 +110,7 @@ void SaganOdometryNode::timer_callback()
 
     // --- 2. NOISY ODOMETRY ---
     {
-        double noisy_v_theta = wheel_radius * (omega_noisy_[1] - omega_noisy_[0]) / wheel_base;
+        double noisy_v_theta = wheel_radius * (omega_noisy_[1] - omega_noisy_[0]) * angular_slip_coeff / wheel_base;
         double noisy_v_forward = wheel_radius * (omega_noisy_[1] + omega_noisy_[0]) / 2.0;
         double noisy_v_lateral = slipage_coefficient * noisy_v_theta;
 

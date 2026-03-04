@@ -22,7 +22,6 @@
       filename="gz-sim-imu-system"
       name="gz::sim::systems::Imu">
     </plugin>
-
     
     <model name='ground_plane'>
       <static>1</static>

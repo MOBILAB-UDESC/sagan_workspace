@@ -1,7 +1,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, TimerAction
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, AppendEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
@@ -156,39 +156,6 @@ def generate_launch_description():
         condition=IfCondition(use_sim_time),
     )
 
-    nodeSaganPath = Node(
-         package='sagan_kanayama_controller',
-         executable='sagan_kanayama_controller',
-         name='sagan_kanayama_controller',
-         output='screen',
-         parameters=[{
-             'k_x': 10.0,
-             'k_y': 25.0,
-             'k_theta': 10.0,
-             'max_linear_velocity': 1.0,
-             'max_angular_velocity': 1.0,
-             'lookahead_distance': 0.5,
-             'robot_base_frame': 'base_footprint',
-             'odom_frame': 'odom',
-             'use_sim_time': use_sim_time
-         }]
-    )
-
-    #nodeSaganPath = Node(
-    #    package='kobuki_controllers_cpp',
-    #    executable='path_controller',
-    #    name='kobuki_controllers_cpp',
-    #    output='screen',
-    #    parameters=[{
-    #        'use_sim_time': use_sim_time
-    #    }]
-    #)
-
-    delayed_nodeSaganPath = TimerAction(
-        period=5.0,  # Delay for 5 seconds
-        actions=[nodeSaganPath]
-    )
-
     slam_launch_path = os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')
     slam_params_file = os.path.join(get_package_share_directory('sagan_description'), 'parameters', 'slam_parameters.yaml')
 
@@ -233,7 +200,6 @@ def generate_launch_description():
     launchDescriptionObject.add_action(nodeSaganOdometry)
     launchDescriptionObject.add_action(nodeSaganEKF)
     launchDescriptionObject.add_action(nodeSaganDiffDriver)
-    launchDescriptionObject.add_action(delayed_nodeSaganPath)
     launchDescriptionObject.add_action(SlamToolbox)
     launchDescriptionObject.add_action(nodeNavigation)
 
