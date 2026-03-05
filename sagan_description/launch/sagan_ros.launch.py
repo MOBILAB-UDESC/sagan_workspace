@@ -26,8 +26,6 @@ def generate_launch_description():
     modelFileRelativePath="model/Sagan.xacro.urdf"
     
     pathModelFile = os.path.join(get_package_share_directory(namePackage), modelFileRelativePath)
-    
-    #robotDescription= xacro.process_file(pathModelFile, mappings={'use_sim_time': use_sim_time}).toxml()
 
     robotDescription = ParameterValue(Command([
         'xacro ', pathModelFile,
@@ -91,9 +89,6 @@ def generate_launch_description():
     )       
 
     # --- Real-Robot-Only Node ---
-
-    # This is the new node. It launches the controller_manager, which will
-    # load your "sagan_control_hardware_interface" plugin from the URDF.
     control_node = Node(
         package='controller_manager',
         executable='ros2_control_node',
@@ -153,7 +148,7 @@ def generate_launch_description():
         package='sagan_differential_driver',
         executable='sagan_differential_driver',
         output='screen',
-        condition=IfCondition(use_sim_time),
+        parameters=[{"use_sim_time": use_sim_time}]
     )
 
     slam_launch_path = os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')
@@ -200,7 +195,7 @@ def generate_launch_description():
     launchDescriptionObject.add_action(nodeSaganOdometry)
     launchDescriptionObject.add_action(nodeSaganEKF)
     launchDescriptionObject.add_action(nodeSaganDiffDriver)
-    launchDescriptionObject.add_action(SlamToolbox)
-    launchDescriptionObject.add_action(nodeNavigation)
+    #launchDescriptionObject.add_action(SlamToolbox)
+    #launchDescriptionObject.add_action(nodeNavigation)
 
     return launchDescriptionObject

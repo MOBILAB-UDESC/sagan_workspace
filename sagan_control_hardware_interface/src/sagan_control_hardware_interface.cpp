@@ -17,20 +17,6 @@
 namespace sagan_control_hardware_interface
 {
 
-void SaganControlHardwareInterface::commands_callback(const sagan_interfaces::msg::SaganCmd::SharedPtr msg)
-{
-  std::lock_guard<std::mutex> lock(commands_mutex_);
-  latest_commands_ = *msg;
-  new_commands_available_ = true;
-  
-  // Extract wheel velocity commands (convert from rad/s to your hardware units if needed)
-  for (int i = 0; i < 4; i++) {
-    wheel_velocity_commands_[i] = msg->wheel_cmd[i].angular_velocity;
-  }
-  
-  RCLCPP_DEBUG(get_logger(), "Received new commands from topic");
-}
-
 hardware_interface::CallbackReturn SaganControlHardwareInterface::on_init(
   const hardware_interface::HardwareInfo & info)
 {
@@ -42,14 +28,6 @@ hardware_interface::CallbackReturn SaganControlHardwareInterface::on_init(
   }
 
   RCLCPP_INFO(get_logger(), "Initializing Sagan Pico Hardware Interface...");
-
-  // Create ROS2 node for topic communication
-  node_ = std::make_shared<rclcpp::Node>("sagan_hardware_interface_node");
-
-  // Initialize command storage
-  wheel_velocity_commands_.resize(4, 0.0);
-  steering_position_commands_.resize(4, 0.0);
-  new_commands_available_ = false;
 
   // --- Get Parameters from URDF ---
   i2c_bus_path_ = info_.hardware_parameters["i2c_bus_path"];
@@ -198,14 +176,6 @@ std::vector<hardware_interface::CommandInterface> SaganControlHardwareInterface:
 hardware_interface::CallbackReturn SaganControlHardwareInterface::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // Create subscriber and publisher
-  commands_subscriber_ = node_->create_subscription<sagan_interfaces::msg::SaganCmd>(
-    "/SaganCommands", rclcpp::SystemDefaultsQoS(),
-    std::bind(&SaganControlHardwareInterface::commands_callback, this, std::placeholders::_1));
-
-  states_publisher_ = node_->create_publisher<sagan_interfaces::msg::SaganStates>(
-    "/Sagan/SaganStates", rclcpp::SystemDefaultsQoS());
-
   // reset values always when configuring hardware
   for (uint i = 0; i < hw_states_positions_.size(); i++) {
     hw_states_positions_[i] = 0.0;
@@ -213,10 +183,6 @@ hardware_interface::CallbackReturn SaganControlHardwareInterface::on_configure(
     hw_commands_velocities_[i] = 0.0;
     hw_states_currents_[i] = 0.0;
   }
-
-  // Initialize states message
-  //states_msg_.wheel_state.resize(4);
-  //states_msg_.steering_state.resize(4);
 
   RCLCPP_INFO(get_logger(), "Successfully configured!");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -251,9 +217,6 @@ hardware_interface::CallbackReturn SaganControlHardwareInterface::on_deactivate(
 hardware_interface::return_type SaganControlHardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
-  // Process ROS callbacks
-  rclcpp::spin_some(node_);
-
   SensorData left_data, right_data;
 
   // Read from Left Pico - NO command byte in response
@@ -300,20 +263,6 @@ hardware_interface::return_type SaganControlHardwareInterface::read(
   hw_states_currents_[2] = (double)right_data.front_current / CURRENT_SCALE_FACTOR;
   hw_states_currents_[3] = (double)right_data.rear_current / CURRENT_SCALE_FACTOR;
 
-  // Update states message for publishing
-  {
-    std::lock_guard<std::mutex> lock(states_mutex_);
-    for (int i = 0; i < 4; i++) {
-      states_msg_.wheel_state[i].angular_velocity = hw_states_velocities_[i];
-      // For real hardware, steering positions might come from different sensors
-      // For now, you can set them to 0 or read from additional hardware
-      states_msg_.steering_state[i].angular_position = 0.0; // Placeholder
-    }
-  }
-
-  // Publish states
-  states_publisher_->publish(states_msg_);
-
   RCLCPP_DEBUG(get_logger(), "Read data - Left: F%.3f/R%.3f, Right: F%.3f/R%.3f", 
                left_vel_front, left_vel_rear, right_vel_front, right_vel_rear);
   
@@ -323,18 +272,7 @@ hardware_interface::return_type SaganControlHardwareInterface::read(
 hardware_interface::return_type SaganControlHardwareInterface::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // Check if we have new commands from the topic
-  if (new_commands_available_) {
-    std::lock_guard<std::mutex> lock(commands_mutex_);
-    
-    // Update hardware command interfaces with values from topic
-    for (int i = 0; i < 4; i++) {
-      hw_commands_velocities_[i] = wheel_velocity_commands_[i];
-    }
-    new_commands_available_ = false;
-  }
-
-  // --- Prepare Left Command ---
+    // --- Prepare Left Command ---
   ControlData left_cmd_data;
   left_cmd_data.cmd = 0xA1; // Set velocity command
   // Match Pico's DATA_SCALE_FACTOR (100.0)
