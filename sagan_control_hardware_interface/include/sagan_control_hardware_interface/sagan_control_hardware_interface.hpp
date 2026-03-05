@@ -86,6 +86,7 @@ private:
 
   // Storage for hardware interfaces
   std::vector<double> hw_commands_velocities_;
+  std::vector<double> hw_commands_positions_;
   std::vector<double> hw_states_positions_;
   std::vector<double> hw_states_velocities_;
   std::vector<double> hw_states_currents_;
@@ -95,6 +96,11 @@ private:
   std::string LR_wheel_joint;
   std::string RF_wheel_joint;
   std::string RR_wheel_joint;
+
+  std::string LF_stering_arm_joint;
+  std::string LR_stering_arm_joint;
+  std::string RF_stering_arm_joint;
+  std::string RR_stering_arm_joint;
 
   // Sensor names
   std::string front_left_sensor_name_;

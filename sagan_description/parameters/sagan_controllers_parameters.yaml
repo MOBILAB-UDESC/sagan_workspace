@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100
+    update_rate: 50
 
     sagan_control_hardware_interface:
      type: sagan_control_hardware_interface/SaganControlHardwareInterface
@@ -43,7 +43,6 @@ sagan_drive_controller:
     state_interfaces:
       - position
       - velocity
-      - effort
 
 joint_state_broadcaster:
   ros__parameters:

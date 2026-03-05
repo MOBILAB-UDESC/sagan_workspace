@@ -34,6 +34,30 @@
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
+
+        <joint name="LF_stering_arm_joint">
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="RF_stering_arm_joint">
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="LR_stering_arm_joint">
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="RR_stering_arm_joint">
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
     
         <sensor name="front_left_motor_sensor">
             <state_interface name="current"/>

@@ -66,19 +66,20 @@ hardware_interface::CallbackReturn SaganControlHardwareInterface::on_init(
   }
 
   // --- Check for expected 4 joints and 4 sensors ---
-  if (info_.joints.size() != 4) {
-    RCLCPP_ERROR(get_logger(), "Expected 4 joints, but got %zu", info_.joints.size());
+  if (info_.joints.size() != 8) {
+    RCLCPP_ERROR(get_logger(), "Expected 8 joints, but got %zu", info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
   if (info_.sensors.size() != 4) {
-    RCLCPP_ERROR(get_logger(), "Expected 4 sensors, but got %zu", info_.sensors.size());
+    RCLCPP_ERROR(get_logger(), "Expected 8 sensors, but got %zu", info_.sensors.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
   // Initialize state and command vectors
   hw_commands_velocities_.resize(4, 0.0);
-  hw_states_positions_.resize(4, 0.0);
-  hw_states_velocities_.resize(4, 0.0);
+  hw_commands_positions_.resize(4, 0.0);
+  hw_states_positions_.resize(8, 0.0);
+  hw_states_velocities_.resize(8, 0.0);
   hw_states_currents_.resize(4, 0.0);
 
   // Store joint and sensor names from URDF
@@ -86,6 +87,11 @@ hardware_interface::CallbackReturn SaganControlHardwareInterface::on_init(
   LR_wheel_joint = info_.joints[1].name;
   RF_wheel_joint = info_.joints[2].name;
   RR_wheel_joint = info_.joints[3].name;
+
+  LF_stering_arm_joint = info_.joints[4].name;
+  LR_stering_arm_joint = info_.joints[5].name;
+  RF_stering_arm_joint = info_.joints[6].name;
+  RR_stering_arm_joint = info_.joints[7].name;
 
   front_left_sensor_name_ = info_.sensors[0].name;
   rear_left_sensor_name_ = info_.sensors[1].name;
@@ -102,14 +108,23 @@ hardware_interface::CallbackReturn SaganControlHardwareInterface::on_init(
         joint.name.c_str(), joint.command_interfaces.size());
       return hardware_interface::CallbackReturn::ERROR;
     }
-    if (joint.command_interfaces[0].name != hardware_interface::HW_IF_VELOCITY)
-    {
-      RCLCPP_FATAL(
-        get_logger(), "Joint '%s' have %s command interfaces found. '%s' expected.",
-        joint.name.c_str(), joint.command_interfaces[0].name.c_str(),
-        hardware_interface::HW_IF_VELOCITY);
-      return hardware_interface::CallbackReturn::ERROR;
-    }
+    // if (joint.command_interfaces[0].name != hardware_interface::HW_IF_VELOCITY)
+    // {
+    //   RCLCPP_FATAL(
+    //     get_logger(), "Joint '%s' have %s command interfaces found. '%s' expected.",
+    //     joint.name.c_str(), joint.command_interfaces[0].name.c_str(),
+    //     hardware_interface::HW_IF_VELOCITY);
+    //   return hardware_interface::CallbackReturn::ERROR;
+    // }
+
+    // if (joint.command_interfaces[1].name != hardware_interface::HW_IF_POSITION)
+    // {
+    //   RCLCPP_FATAL(
+    //     get_logger(), "Joint '%s' have %s command interfaces found. '%s' expected.",
+    //     joint.name.c_str(), joint.command_interfaces[1].name.c_str(),
+    //     hardware_interface::HW_IF_POSITION);
+    //   return hardware_interface::CallbackReturn::ERROR;
+    // }
     if (joint.state_interfaces.size() != 2)
     {
       RCLCPP_FATAL(
@@ -130,14 +145,23 @@ std::vector<hardware_interface::StateInterface> SaganControlHardwareInterface::e
   RCLCPP_INFO(get_logger(), "Exporting state interfaces...");
   
   // Export 4 joints, each with 2 states (position, velocity)
-  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[0]);
-  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[0]);
-  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[1]);
-  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[1]);
-  state_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[2]);
-  state_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[2]);
-  state_interfaces.emplace_back(RF_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[3]);
-  state_interfaces.emplace_back(RF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[3]);
+  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[0]);
+  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[0]);
+  state_interfaces.emplace_back(RF_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[1]);
+  state_interfaces.emplace_back(RF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[1]);
+  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[2]);
+  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[2]);
+  state_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[3]);
+  state_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[3]);
+
+  state_interfaces.emplace_back(LR_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[4]);
+  state_interfaces.emplace_back(LR_stering_arm_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[4]);
+  state_interfaces.emplace_back(LF_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[5]);
+  state_interfaces.emplace_back(LF_stering_arm_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[5]);
+  state_interfaces.emplace_back(RR_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[6]);
+  state_interfaces.emplace_back(RR_stering_arm_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[6]);
+  state_interfaces.emplace_back(RF_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[7]);
+  state_interfaces.emplace_back(RF_stering_arm_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[7]);
 
   // Export 4 sensors, each with 1 state (current)
   state_interfaces.emplace_back(rear_left_sensor_name_, "current", &hw_states_currents_[0]);
@@ -160,10 +184,15 @@ std::vector<hardware_interface::CommandInterface> SaganControlHardwareInterface:
   RCLCPP_INFO(get_logger(), "Exporting command interfaces...");
   
   // Export 4 joints, each with 1 command (velocity)
-  command_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[0]);
+  command_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[0]);
   command_interfaces.emplace_back(RF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[1]);
   command_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[2]);
-  command_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[3]);
+  command_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[3]);
+
+  command_interfaces.emplace_back(RR_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_commands_positions_[0]);
+  command_interfaces.emplace_back(RF_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_commands_positions_[1]);
+  command_interfaces.emplace_back(LR_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_commands_positions_[2]);
+  command_interfaces.emplace_back(LF_stering_arm_joint, hardware_interface::HW_IF_POSITION, &hw_commands_positions_[3]);
 
   RCLCPP_INFO(get_logger(), "Exported %zu command interfaces:", command_interfaces.size());
   for (const auto& interface : command_interfaces) {
@@ -180,8 +209,12 @@ hardware_interface::CallbackReturn SaganControlHardwareInterface::on_configure(
   for (uint i = 0; i < hw_states_positions_.size(); i++) {
     hw_states_positions_[i] = 0.0;
     hw_states_velocities_[i] = 0.0;
-    hw_commands_velocities_[i] = 0.0;
     hw_states_currents_[i] = 0.0;
+  }
+
+  for (uint i = 0; i < hw_commands_velocities_.size(); i++) {
+    hw_commands_velocities_[i] = 0.0;
+    hw_commands_positions_[i] = 0.0;
   }
 
   RCLCPP_INFO(get_logger(), "Successfully configured!");

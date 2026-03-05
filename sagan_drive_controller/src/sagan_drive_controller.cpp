@@ -27,15 +27,12 @@ SaganDriverController::SaganDriverController()
 controller_interface::CallbackReturn SaganDriverController::on_init()
 {
   try
-  {
-    //auto_declare<std::vector<std::string>>("joints", joint_names_);
-    
+  {  
     auto_declare<std::vector<std::string>>("command_interfaces", command_interface_types_);
     
     auto_declare<std::vector<std::string>>("wheel_command_interfaces", wheel_command_interface_types_);
     auto_declare<std::vector<std::string>>("steering_command_interfaces", steering_command_interface_types_);
     auto_declare<std::vector<std::string>>("state_interfaces", state_interface_types_);
-    //auto_declare<std::vector<double>>("joints_references", {});
 
     auto_declare<std::vector<std::string>>("front_left_wheel_joint", fl_wheel_joint);
     auto_declare<std::vector<std::string>>("front_right_wheel_joint", fr_wheel_joint);
@@ -348,9 +345,10 @@ void SaganDriverController::WheelEmulatorUpdate(){
 
   for (auto index = 0; index < 4; index++)
   {
-    wheel_velocity_error_[index] = wheel_velocity_reference_[index] - SaganStates_msg.wheel_state[index].angular_velocity;
-    wheel_command_interface_[index] = wheel_velocity_previous_[index] + 0.06916 * wheel_velocity_error_[index];
-    wheel_velocity_previous_[index] = wheel_command_interface_[index]; 
+    // wheel_velocity_error_[index] = wheel_velocity_reference_[index] - SaganStates_msg.wheel_state[index].angular_velocity;
+    // wheel_command_interface_[index] = wheel_velocity_previous_[index] + 0.06916 * wheel_velocity_error_[index];
+    // wheel_velocity_previous_[index] = wheel_command_interface_[index]; 
+    wheel_command_interface_[index] = wheel_velocity_reference_[index];
   }  
 }
 
