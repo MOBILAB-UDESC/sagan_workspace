@@ -145,12 +145,12 @@ std::vector<hardware_interface::StateInterface> SaganControlHardwareInterface::e
   RCLCPP_INFO(get_logger(), "Exporting state interfaces...");
   
   // Export 4 joints, each with 2 states (position, velocity)
-  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[0]);
-  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[0]);
+  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[2]);
+  state_interfaces.emplace_back(LF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[2]);
   state_interfaces.emplace_back(RF_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[1]);
   state_interfaces.emplace_back(RF_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[1]);
-  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[2]);
-  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[2]);
+  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[0]);
+  state_interfaces.emplace_back(LR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[0]);
   state_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_POSITION, &hw_states_positions_[3]);
   state_interfaces.emplace_back(RR_wheel_joint, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[3]);
 
