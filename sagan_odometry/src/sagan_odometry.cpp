@@ -22,7 +22,7 @@ SaganOdometryNode::SaganOdometryNode()
 
     this->declare_parameter<double>("wheel_velocity_noise_scaler", 0.04);
     this->get_parameter("wheel_velocity_noise_scaler", wheel_velocity_noise_scaler_);
-
+    
     subscription_ = this->create_subscription<sagan_interfaces::msg::SaganStates>(
         "/Sagan/SaganStates", 10, std::bind(&SaganOdometryNode::state_callback, this, std::placeholders::_1));
 

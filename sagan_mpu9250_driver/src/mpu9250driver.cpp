@@ -34,8 +34,19 @@ MPU9250Driver::MPU9250Driver() : Node("mpu9250publisher"), consecutive_error_cou
   if (this->get_parameter("calibrate").as_bool()) {
     RCLCPP_INFO(this->get_logger(), "Calibrating...");
     mpu9250_->calibrate();
-    mpu9250_->setMagnetometerOffset(35.0/2.0, 35.0/2.0, 35.0/2.0);
   }
+  this->declare_parameter<double>("mag_x_offset", 0.0);
+  this->declare_parameter<double>("mag_y_offset", 0.0);
+  this->declare_parameter<double>("mag_z_offset", 0.0);
+  this->declare_parameter<double>("mag_x_scale",  1.0);
+  this->declare_parameter<double>("mag_y_scale",  1.0);
+  this->declare_parameter<double>("mag_z_scale",  1.0);
+
+  mpu9250_->setMagnetometerOffset(
+      this->get_parameter("mag_x_offset").as_double(),
+      this->get_parameter("mag_y_offset").as_double(),
+      this->get_parameter("mag_z_offset").as_double());
+
   mpu9250_->printConfig();
   mpu9250_->printOffsets();
   } catch (const std::runtime_error& e) {
@@ -48,6 +59,11 @@ MPU9250Driver::MPU9250Driver() : Node("mpu9250publisher"), consecutive_error_cou
   std::chrono::duration<int64_t, std::milli> frequency =
       1000ms / this->get_parameter("gyro_range").as_int();
   timer_ = this->create_wall_timer(frequency, std::bind(&MPU9250Driver::handleInput, this));
+
+  calibration_service_ = this->create_service<std_srvs::srv::Trigger>(
+      "calibrate_magnetometer",
+      std::bind(&MPU9250Driver::handle_calibration, this,
+                std::placeholders::_1, std::placeholders::_2));
 }
 
 void MPU9250Driver::handleInput()
@@ -98,36 +114,121 @@ void MPU9250Driver::declareParameters()
 
 void MPU9250Driver::calculateOrientation(sensor_msgs::msg::Imu& imu_message)
 {
-  // Calculate Euler angles
-  double roll, pitch;
-  roll = atan2(imu_message.linear_acceleration.y, imu_message.linear_acceleration.z);
-  pitch = atan2(-imu_message.linear_acceleration.x,imu_message.linear_acceleration.z);
+    double ax = imu_message.linear_acceleration.x;
+    double ay = imu_message.linear_acceleration.y;
+    double az = imu_message.linear_acceleration.z;
 
-try{
-  double yaw = atan2(mpu9250_->getMagneticFluxDensityY(), mpu9250_->getMagneticFluxDensityX());
-  //RCLCPP_INFO(this->get_logger(), "Magnegtic Y flux: %.2f, Magnetic X flux: %.2f",mpu9250_->getMagneticFluxDensityY(), mpu9250_->getMagneticFluxDensityX());
-  // Convert to quaternion
-  double cy = cos(yaw * 0.5);
-  double sy = sin(yaw * 0.5);
-  double cp = cos(pitch * 0.5);
-  double sp = sin(pitch * 0.5);
-  double cr = cos(roll * 0.5);
-  double sr = sin(roll * 0.5);
-  imu_message.orientation.x = cy * cp * sr - sy * sp * cr;
-  imu_message.orientation.y = sy * cp * sr + cy * sp * cr;
-  imu_message.orientation.z = sy * cp * cr - cy * sp * sr;
-  imu_message.orientation.w = cy * cp * cr + sy * sp * sr;
-  } catch (const std::runtime_error& e) {
-    RCLCPP_WARN(this->get_logger(), "Magnetometer not responding. Providing only Roll and Pitch. Error: %s", e.what());
-    double cp = cos(pitch * 0.5);
-    double sp = sin(pitch * 0.5);
-    double cr = cos(roll * 0.5);
-    double sr = sin(roll * 0.5);
-    imu_message.orientation.x = cp * sr;
-    imu_message.orientation.y = sp * cr;
-    imu_message.orientation.z = sp * sr;
-    imu_message.orientation.w = cp * cr;
-  }
+    double roll  = atan2(ay, az);
+    double pitch = atan2(-ax, sqrt(ay*ay + az*az));  // ✅ more stable than /az
+
+    try {
+        // Apply soft iron scale correction
+        double mx = mpu9250_->getMagneticFluxDensityX() * mag_scale_[0];
+        double my = mpu9250_->getMagneticFluxDensityY() * mag_scale_[1];
+        double mz = mpu9250_->getMagneticFluxDensityZ() * mag_scale_[2];
+        // (hard iron offset is already applied inside setMagnetometerOffset)
+
+        // ✅ Tilt-compensated yaw
+        double mx_h = mx * cos(pitch)
+                    + my * sin(pitch) * sin(roll)
+                    + mz * sin(pitch) * cos(roll);
+        double my_h = my * cos(roll)
+                    - mz * sin(roll);
+
+        double yaw = atan2(-my_h, mx_h);
+
+        // Euler to quaternion
+        double cy = cos(yaw   * 0.5), sy = sin(yaw   * 0.5);
+        double cp = cos(pitch * 0.5), sp = sin(pitch * 0.5);
+        double cr = cos(roll  * 0.5), sr = sin(roll  * 0.5);
+
+        imu_message.orientation.w = cy*cp*cr + sy*sp*sr;
+        imu_message.orientation.x = cy*cp*sr - sy*sp*cr;
+        imu_message.orientation.y = sy*cp*sr + cy*sp*cr;
+        imu_message.orientation.z = sy*cp*cr - cy*sp*sr;
+
+    } catch (const std::runtime_error& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+            "Mag not responding, roll/pitch only: %s", e.what());
+        // fallback: yaw = 0
+        double cp = cos(pitch*0.5), sp = sin(pitch*0.5);
+        double cr = cos(roll *0.5), sr = sin(roll *0.5);
+        imu_message.orientation.w = cp*cr;
+        imu_message.orientation.x = cp*sr;
+        imu_message.orientation.y = sp*cr;
+        imu_message.orientation.z = -sp*sr;
+    }
+}
+
+void MPU9250Driver::handle_calibration(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+    if (is_calibrating_) {
+        response->success = false;
+        response->message = "Calibration already in progress";
+        return;
+    }
+    // Spawn thread so service call returns immediately
+    if (calibration_thread_.joinable()) calibration_thread_.join();
+    calibration_thread_ = std::thread(
+        &MPU9250Driver::execute_calibration, this, 300); // 300 samples
+    response->success = true;
+    response->message = "Calibration started — rotate the sensor in all directions!";
+}
+
+void MPU9250Driver::execute_calibration(int num_samples)
+{
+    is_calibrating_ = true;
+    float min_x = 1e9,  max_x = -1e9;
+    float min_y = 1e9,  max_y = -1e9;
+    float min_z = 1e9,  max_z = -1e9;
+
+    RCLCPP_INFO(get_logger(), "Calibration started: %d samples at 20Hz (~%.0fs)",
+        num_samples, num_samples / 20.0);
+
+    rclcpp::Rate rate(20);
+    for (int i = 0; i < num_samples && rclcpp::ok(); i++) {
+        float x = mpu9250_->getMagneticFluxDensityX();
+        float y = mpu9250_->getMagneticFluxDensityY();
+        float z = mpu9250_->getMagneticFluxDensityZ();
+
+        min_x = std::min(min_x, x); max_x = std::max(max_x, x);
+        min_y = std::min(min_y, y); max_y = std::max(max_y, y);
+        min_z = std::min(min_z, z); max_z = std::max(max_z, z);
+
+        if (i % 20 == 0) // log every second
+            RCLCPP_INFO(get_logger(), "Collecting... %d/%d", i, num_samples);
+        rate.sleep();
+    }
+
+    // Hard iron offsets
+    float ox = (max_x + min_x) / 2.0f;
+    float oy = (max_y + min_y) / 2.0f;
+    float oz = (max_z + min_z) / 2.0f;
+
+    // Soft iron scales
+    float avg = ((max_x-min_x) + (max_y-min_y) + (max_z-min_z)) / 3.0f;
+    float sx = avg / (max_x - min_x);
+    float sy = avg / (max_y - min_y);
+    float sz = avg / (max_z - min_z);
+
+    mpu9250_->setMagnetometerOffset(ox, oy, oz);
+    mag_scale_  = {sx, sy, sz};
+    mag_offset_ = {ox, oy, oz};
+
+    this->set_parameter(rclcpp::Parameter("mag_x_offset", (double)ox));
+    this->set_parameter(rclcpp::Parameter("mag_y_offset", (double)oy));
+    this->set_parameter(rclcpp::Parameter("mag_z_offset", (double)oz));
+    this->set_parameter(rclcpp::Parameter("mag_x_scale",  (double)sx));
+    this->set_parameter(rclcpp::Parameter("mag_y_scale",  (double)sy));
+    this->set_parameter(rclcpp::Parameter("mag_z_scale",  (double)sz));
+
+    RCLCPP_INFO(get_logger(),
+        "Calibration done! Offsets:[%.3f,%.3f,%.3f] Scales:[%.3f,%.3f,%.3f]",
+        ox, oy, oz, sx, sy, sz);
+
+    is_calibrating_ = false;
 }
 
 int main(int argc, char* argv[])
