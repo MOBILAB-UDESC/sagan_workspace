@@ -121,11 +121,15 @@ void MPU9250Driver::calculateOrientation(sensor_msgs::msg::Imu& imu_message)
     double roll  = atan2(ay, az);
     double pitch = atan2(-ax, sqrt(ay*ay + az*az));  // ✅ more stable than /az
 
+    
+
     try {
         // Apply soft iron scale correction
         double mx = mpu9250_->getMagneticFluxDensityX() * mag_scale_[0];
         double my = mpu9250_->getMagneticFluxDensityY() * mag_scale_[1];
         double mz = mpu9250_->getMagneticFluxDensityZ() * mag_scale_[2];
+
+        RCLCPP_INFO(get_logger(), "Magnectic Flux: X: %f, Y: %f, Z: %f", mx, my, mz);
         // (hard iron offset is already applied inside setMagnetometerOffset)
 
         // ✅ Tilt-compensated yaw

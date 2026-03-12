@@ -48,6 +48,18 @@ def generate_launch_description():
         "bridge_parameters.yaml"
     )
 
+    lidar_parameters_path = os.path.join(
+        get_package_share_directory(namePackage),
+        "parameters",
+        "lidar_parameters.yaml"
+    )
+
+    imu_parameters_path = os.path.join(
+        get_package_share_directory(namePackage),
+        "parameters",
+        "mpu9250.yaml"
+    )
+
     # --- Simulation-Only Nodes ---
 
     gazebo_rosPackageLaunch=PythonLaunchDescriptionSource(
@@ -104,7 +116,15 @@ def generate_launch_description():
         package='sagan_mpu9250_driver',
         executable='sagan_mpu9250_driver',
         output='screen',
-        parameters=[{"use_sim_time": use_sim_time}],
+        parameters=[{"use_sim_time": use_sim_time}, imu_parameters_path],
+        condition=UnlessCondition(use_sim_time) # Only run this if *not* in simulation
+    )
+
+    nodeLidarDriver = Node(
+        package='sllidar_ros2',
+        executable='sllidar_node',
+        name='sllidar_node',
+        parameters=[{"use_sim_time": use_sim_time}, lidar_parameters_path],
         condition=UnlessCondition(use_sim_time) # Only run this if *not* in simulation
     )
     # --- Common Nodes (Sim & Real) ---
@@ -188,6 +208,7 @@ def generate_launch_description():
     # 3. Add Real-Robot-Only node
     launchDescriptionObject.add_action(control_node)
     launchDescriptionObject.add_action(nodeSaganImuDriver)  
+    launchDescriptionObject.add_action(nodeLidarDriver)  
 
     # 4. Add Common nodes
     launchDescriptionObject.add_action(nodeRobotStatePublisher)

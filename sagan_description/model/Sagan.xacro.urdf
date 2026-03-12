@@ -294,7 +294,7 @@
 
   <link name="lidar_frame"/>
   <joint name="lidar_frame_joint" type="fixed">
-    <origin xyz="0 -0.1 0" rpy="-1.5708 0 3.1415" />
+    <origin xyz="0 -0.1 0" rpy="-1.5708 -3.1415  3.1415" />
     <parent link="base_link" />
     <child link="lidar_frame" />
   </joint>
