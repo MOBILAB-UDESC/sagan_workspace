@@ -4,6 +4,7 @@
 #include <memory>
 #include <stdexcept>
 #include <thread>
+#include <algorithm>
 
 #include "LinuxI2cCommunicator.h"
 
@@ -121,8 +122,6 @@ void MPU9250Driver::calculateOrientation(sensor_msgs::msg::Imu& imu_message)
     double roll  = atan2(ay, az);
     double pitch = atan2(-ax, sqrt(ay*ay + az*az));  // ✅ more stable than /az
 
-    
-
     try {
         // Apply soft iron scale correction
         double mx = mpu9250_->getMagneticFluxDensityX() * mag_scale_[0];
@@ -188,23 +187,39 @@ void MPU9250Driver::execute_calibration(int num_samples)
     float min_y = 1e9,  max_y = -1e9;
     float min_z = 1e9,  max_z = -1e9;
 
+    std::vector<float> magn_x_samples(num_samples, 0.0);
+    std::vector<float> magn_y_samples(num_samples, 0.0);
+    std::vector<float> magn_z_samples(num_samples, 0.0);
+
     RCLCPP_INFO(get_logger(), "Calibration started: %d samples at 20Hz (~%.0fs)",
         num_samples, num_samples / 20.0);
 
     rclcpp::Rate rate(20);
     for (int i = 0; i < num_samples && rclcpp::ok(); i++) {
-        float x = mpu9250_->getMagneticFluxDensityX();
-        float y = mpu9250_->getMagneticFluxDensityY();
-        float z = mpu9250_->getMagneticFluxDensityZ();
+        float x = static_cast<float>(mpu9250_->getMagneticFluxDensityX());
+        float y = static_cast<float>(mpu9250_->getMagneticFluxDensityY());
+        float z = static_cast<float>(mpu9250_->getMagneticFluxDensityZ());
 
-        min_x = std::min(min_x, x); max_x = std::max(max_x, x);
-        min_y = std::min(min_y, y); max_y = std::max(max_y, y);
-        min_z = std::min(min_z, z); max_z = std::max(max_z, z);
+        magn_x_samples[i] = x;
+        magn_y_samples[i] = y;
+        magn_z_samples[i] = z;
 
         if (i % 20 == 0) // log every second
             RCLCPP_INFO(get_logger(), "Collecting... %d/%d", i, num_samples);
         rate.sleep();
     }
+
+    std::sort(magn_x_samples.begin(), magn_x_samples.end());
+    std::sort(magn_y_samples.begin(), magn_y_samples.end());
+    std::sort(magn_z_samples.begin(), magn_z_samples.end());
+
+    //Find the index for the 2% and 98% marks
+    int lower_index = magn_x_samples.size() * 0.02; // Skips the bottom 2%
+    int upper_index = magn_x_samples.size() * 0.98; // Skips the top 2%  
+
+    max_x = magn_x_samples[upper_index]; min_x = magn_x_samples[lower_index];
+    max_y = magn_y_samples[upper_index]; min_y = magn_y_samples[lower_index];
+    max_z = magn_z_samples[upper_index]; min_z = magn_z_samples[lower_index];
 
     // Hard iron offsets
     float ox = (max_x + min_x) / 2.0f;
