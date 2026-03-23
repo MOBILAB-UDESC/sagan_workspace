@@ -23,8 +23,6 @@ extern "C" {
 }
 #include <unistd.h>      // For close()
 
-
-
 namespace sagan_control_hardware_interface
 {
 class SaganControlHardwareInterface : public hardware_interface::SystemInterface

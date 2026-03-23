@@ -38,9 +38,6 @@ MPU9250Driver::MPU9250Driver() : Node("mpu9250publisher"), consecutive_error_cou
   this->declare_parameter<double>("mag_x_offset", 0.0);
   this->declare_parameter<double>("mag_y_offset", 0.0);
   this->declare_parameter<double>("mag_z_offset", 0.0);
-  this->declare_parameter<double>("mag_x_scale",  1.0);
-  this->declare_parameter<double>("mag_y_scale",  1.0);
-  this->declare_parameter<double>("mag_z_scale",  1.0);
 
   mpu9250_->setMagnetometerOffset(
       this->get_parameter("mag_x_offset").as_double(),
@@ -121,25 +118,15 @@ void MPU9250Driver::calculateOrientation(sensor_msgs::msg::Imu& imu_message)
     double roll  = atan2(ay, az);
     double pitch = atan2(-ax, sqrt(ay*ay + az*az));  // ✅ more stable than /az
 
-    
-
     try {
         // Apply soft iron scale correction
-        double mx = mpu9250_->getMagneticFluxDensityX() * mag_scale_[0];
-        double my = mpu9250_->getMagneticFluxDensityY() * mag_scale_[1];
-        double mz = mpu9250_->getMagneticFluxDensityZ() * mag_scale_[2];
+        double mx = mpu9250_->getMagneticFluxDensityX();
+        double my = mpu9250_->getMagneticFluxDensityY();
+        double mz = mpu9250_->getMagneticFluxDensityZ();
 
-        RCLCPP_INFO(get_logger(), "Magnectic Flux: X: %f, Y: %f, Z: %f", mx, my, mz);
-        // (hard iron offset is already applied inside setMagnetometerOffset)
-
-        // ✅ Tilt-compensated yaw
-        double mx_h = mx * cos(pitch)
-                    + my * sin(pitch) * sin(roll)
-                    + mz * sin(pitch) * cos(roll);
-        double my_h = my * cos(roll)
-                    - mz * sin(roll);
-
-        double yaw = atan2(-my_h, mx_h);
+        // RCLCPP_INFO(get_logger(), "Magnectic Flux: X: %f, Y: %f, Z: %f", mx, my, mz);
+        
+        double yaw = atan2(-my, mx);
 
         // Euler to quaternion
         double cy = cos(yaw   * 0.5), sy = sin(yaw   * 0.5);
@@ -184,53 +171,62 @@ void MPU9250Driver::handle_calibration(
 void MPU9250Driver::execute_calibration(int num_samples)
 {
     is_calibrating_ = true;
-    float min_x = 1e9,  max_x = -1e9;
-    float min_y = 1e9,  max_y = -1e9;
-    float min_z = 1e9,  max_z = -1e9;
+    double min_x = 1e9,  max_x = -1e9;
+    double min_y = 1e9,  max_y = -1e9;
+    double min_z = 1e9,  max_z = -1e9;
+
+    std::vector<double> magn_x_samples(num_samples, 0.0);
+    std::vector<double> magn_y_samples(num_samples, 0.0);
+    std::vector<double> magn_z_samples(num_samples, 0.0);
 
     RCLCPP_INFO(get_logger(), "Calibration started: %d samples at 20Hz (~%.0fs)",
         num_samples, num_samples / 20.0);
 
     rclcpp::Rate rate(20);
     for (int i = 0; i < num_samples && rclcpp::ok(); i++) {
-        float x = mpu9250_->getMagneticFluxDensityX();
-        float y = mpu9250_->getMagneticFluxDensityY();
-        float z = mpu9250_->getMagneticFluxDensityZ();
+        double x = mpu9250_->getMagneticFluxDensityX();
+        double y = mpu9250_->getMagneticFluxDensityY();
+        double z = mpu9250_->getMagneticFluxDensityZ();
 
-        min_x = std::min(min_x, x); max_x = std::max(max_x, x);
-        min_y = std::min(min_y, y); max_y = std::max(max_y, y);
-        min_z = std::min(min_z, z); max_z = std::max(max_z, z);
+        magn_x_samples[i] = x;
+        magn_y_samples[i] = y;
+        magn_z_samples[i] = z;
 
         if (i % 20 == 0) // log every second
             RCLCPP_INFO(get_logger(), "Collecting... %d/%d", i, num_samples);
         rate.sleep();
     }
 
-    // Hard iron offsets
-    float ox = (max_x + min_x) / 2.0f;
-    float oy = (max_y + min_y) / 2.0f;
-    float oz = (max_z + min_z) / 2.0f;
+    std::sort(magn_x_samples.begin(), magn_x_samples.end());
+    std::sort(magn_y_samples.begin(), magn_y_samples.end());
+    std::sort(magn_z_samples.begin(), magn_z_samples.end());
 
-    // Soft iron scales
-    float avg = ((max_x-min_x) + (max_y-min_y) + (max_z-min_z)) / 3.0f;
-    float sx = avg / (max_x - min_x);
-    float sy = avg / (max_y - min_y);
-    float sz = avg / (max_z - min_z);
+    //Find the index for the 2% and 98% marks
+    int lower_index = magn_x_samples.size() * 0.05; // Skips the bottom 2%
+    int upper_index = magn_x_samples.size() * 0.95; // Skips the top 2%  
+
+    max_x = magn_x_samples[upper_index]; min_x = magn_x_samples[lower_index];
+    max_y = magn_y_samples[upper_index]; min_y = magn_y_samples[lower_index];
+    max_z = magn_z_samples[upper_index]; min_z = magn_z_samples[lower_index];
+
+    RCLCPP_INFO(get_logger(), "X range: [%.3f, %.3f]", min_x, max_x);
+    RCLCPP_INFO(get_logger(), "Y range: [%.3f, %.3f]", min_y, max_y);
+    RCLCPP_INFO(get_logger(), "Z range: [%.3f, %.3f]", min_z, max_z);
+
+    double ox = (max_x + min_x) / 2.0f;
+    double oy = (max_y + min_y) / 2.0f;
+    double oz = (max_z + min_z) / 2.0f;
 
     mpu9250_->setMagnetometerOffset(ox, oy, oz);
-    mag_scale_  = {sx, sy, sz};
     mag_offset_ = {ox, oy, oz};
 
     this->set_parameter(rclcpp::Parameter("mag_x_offset", (double)ox));
     this->set_parameter(rclcpp::Parameter("mag_y_offset", (double)oy));
     this->set_parameter(rclcpp::Parameter("mag_z_offset", (double)oz));
-    this->set_parameter(rclcpp::Parameter("mag_x_scale",  (double)sx));
-    this->set_parameter(rclcpp::Parameter("mag_y_scale",  (double)sy));
-    this->set_parameter(rclcpp::Parameter("mag_z_scale",  (double)sz));
 
     RCLCPP_INFO(get_logger(),
-        "Calibration done! Offsets:[%.3f,%.3f,%.3f] Scales:[%.3f,%.3f,%.3f]",
-        ox, oy, oz, sx, sy, sz);
+        "Calibration done! Offsets:[%.3f,%.3f,%.3f]",
+        ox, oy, oz);
 
     is_calibrating_ = false;
 }

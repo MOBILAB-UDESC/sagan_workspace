@@ -235,7 +235,7 @@ double MPU9250Sensor::getMagneticFluxDensityX() const
   int magn_finish = i2cBus_->read(0x09);
  
   initImuI2c();
-  return fabs(magn_flux_x_converted) - magn_x_offset_;
+  return magn_flux_x_converted - magn_x_offset_;
 }
 
 double MPU9250Sensor::getMagneticFluxDensityY() const
@@ -247,7 +247,7 @@ double MPU9250Sensor::getMagneticFluxDensityY() const
   double magn_flux_y_converted = convertRawMagnetometerData(magn_flux_y);
   int magn_finish = i2cBus_->read(0x09);
   initImuI2c();
-  return fabs(magn_flux_y_converted) - magn_y_offset_;
+  return magn_flux_y_converted - magn_y_offset_;
 }
 
 double MPU9250Sensor::getMagneticFluxDensityZ() const
@@ -259,7 +259,7 @@ double MPU9250Sensor::getMagneticFluxDensityZ() const
   double magn_flux_z_converted = convertRawMagnetometerData(magn_flux_z);
   int magn_finish = i2cBus_->read(0x09);
   initImuI2c();
-  return fabs(magn_flux_z_converted) - magn_z_offset_;
+  return magn_flux_z_converted - magn_z_offset_;
 }
 
 double MPU9250Sensor::convertRawGyroscopeData(int16_t gyro_raw) const

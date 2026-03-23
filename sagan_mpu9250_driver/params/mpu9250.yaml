@@ -17,7 +17,4 @@ mpu9250driver_node:
     mag_x_offset: 0.0
     mag_y_offset: 0.0
     mag_z_offset: 0.0
-    mag_x_scale: 0.0
-    mag_y_scale: 0.0
-    mag_z_scale: 0.0
     frequency: 100 # [Hz]

@@ -27,8 +27,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 
   // --- Magnetometer calibration state ---
-  std::array<float, 3> mag_scale_  = {1.0f, 1.0f, 1.0f};
-  std::array<float, 3> mag_offset_ = {0.0f, 0.0f, 0.0f};
+  std::array<double, 3> mag_offset_ = {0.0f, 0.0f, 0.0f};
   std::atomic<bool> is_calibrating_{false};
 
   // --- Calibration service ---
